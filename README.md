@@ -36,6 +36,8 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 | Mouse | look around (click the game to capture the mouse, `Esc` releases it and opens the menu) |
 | `H` HUD, `M` mute, `N` music, `F` performance stats |
 
+**Touch screens** (phones / tablets) get on-screen controls automatically: steer ◀ ▶ bottom-left, gas / brake / handbrake bottom-right, camera · autopilot · reset · menu top-right, and drag anywhere else to look around. Desktop browsers never show them.
+
 Gamepads work too (left stick, RT/LT, A handbrake, Y camera, X autopilot, Start menu).
 
 ## What is in the box

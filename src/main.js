@@ -17,6 +17,7 @@ import { Weather } from './weather.js';
 import { Roadside } from './roadside.js';
 import { AudioEngine } from './audio.js';
 import { Particles, SkidMarks } from './fx.js';
+import { setupTouch, isTouchDevice } from './touch.js';
 import { UI, loadSettings, saveSettings, timeFlowRate } from './ui.js';
 import { clamp } from './noise.js';
 
@@ -153,6 +154,17 @@ class Game {
     this.ui = new UI(this);
     window.addEventListener('resize', () => this.resize());
     this.setupInput();
+    // touch controls appear only on touch screens (or as soon as a touch is seen)
+    this.touchMode = false;
+    const enableTouch = () => {
+      if (this.touchMode) return;
+      this.touchMode = true;
+      document.body.classList.add('touch');
+      setupTouch(this);
+      const s = $('start').querySelector('.s'); if (s) s.textContent = 'Tap to drive';
+      const k = $('start').querySelector('.k'); if (k) k.innerHTML = 'Endless procedural roads &nbsp;·&nbsp; relax, cruise, explore<br>Steer bottom-left · pedals bottom-right · drag to look';
+    };
+    if (isTouchDevice()) enableTouch(); else window.addEventListener('touchstart', enableTouch, { once: true, passive: true });
     $('unit').textContent = S.units === 'mph' ? 'mph' : 'km/h';
     if (!S.showHud) { $('hud').classList.add('hidden'); $('topbar').classList.add('hidden'); }
 
@@ -177,6 +189,7 @@ class Game {
       $('start').style.display = 'none';
       this.started = true;
       this.captureMouse();
+      if (this.touchMode) { try { const el = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el); screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* optional */ } }
       this.audio.start();
       this.audio.setVolume(S.volume);
     };
@@ -285,7 +298,7 @@ class Game {
 
   captureMouse() {
     const cv = this.canvas;
-    if (!this.started || this.ui.open || (this.settings.mouse ?? 1) <= 0 || document.pointerLockElement === cv || !cv.requestPointerLock) return;
+    if (!this.started || this.touchMode || this.ui.open || (this.settings.mouse ?? 1) <= 0 || document.pointerLockElement === cv || !cv.requestPointerLock) return;
     try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* needs a user gesture */ }
   }
 

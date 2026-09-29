@@ -2,11 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Open Road</title>
 <style>
   :root { --fg: #eef3f8; --dim: rgba(238,243,248,.62); --glass: rgba(14,18,24,.62); --line: rgba(255,255,255,.14); --acc: #ffd38a; }
-  html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: var(--fg); user-select: none; }
+  html, body { margin: 0; height: 100%; background: #0b0d10; overflow: hidden; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: var(--fg); user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
   canvas { display: block; width: 100vw; height: 100vh; }
   #hud { position: fixed; left: 0; right: 0; bottom: 0; padding: 22px 32px; display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none; text-shadow: 0 1px 8px rgba(0,0,0,.55); transition: opacity .6s; }
   #hud.hidden, #topbar.hidden { opacity: 0; }
