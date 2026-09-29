@@ -1,5 +1,7 @@
 # Open Road
 
+**▶ Play it in your browser: https://nikunjsingh93.github.io/open-road-horizon/**
+
 A relaxing, endless-road driving game for the browser in the spirit of *Slow Roads*, built with **Three.js** and a
 **Blender-authored** car. Everything else – terrain, road, forests, sky, water, weather, audio – is generated procedurally
 at runtime. No asset packs.
@@ -14,6 +16,8 @@ npm run dev          # http://localhost:5199
 ```
 
 or double-click `run.bat` (Windows). For a production build: `npm run build && npm run preview`.
+
+The live version is served from the `gh-pages` branch; `npm run deploy` rebuilds and republishes it.
 
 A recent Chromium browser with WebGL2 is required. Click the start screen once (browsers only allow audio after a gesture).
 
