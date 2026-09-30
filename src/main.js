@@ -34,10 +34,10 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 //   shadows: 0 = off, 1 = sun shadows on terrain / car only, 2 = trees cast shadows too
 //   keep: fraction of trees kept, tileMin: smallest far-terrain tile (m), rays: god rays, minScale: lowest dynamic resolution
 const QUALITY = {
-  // 'lite' = the direct, cheap render path (see gfx.js LITE): the target for weak phones / integrated GPUs. Resolution is limited by a pixel
-  // budget (maxPix), not by a fixed tiny scale, so it stays sharp; everything else is made cheap instead.
-  low:    { lite: true, pr: 3, maxPix: 0.8e6, msaa: 0, bloom: false, shadows: 0, shadow: 512,  shadowFar: 120, cover: 26,  nearR: 100, farR: 380,  grass: 0.35, keep: 0.28, lod0: false, tileMin: 256, rays: false, minScale: 0.78, wild: false, traffic: false },
-  medium: { pr: 0.9,  msaa: 0, bloom: false, shadows: 1, shadow: 1024, shadowFar: 160, cover: 60,  nearR: 200, farR: 800,  grass: 1.8, keep: 0.75, lod0: false, tileMin: 128, rays: false, minScale: 0.5,  wild: true },
+  // 'lite' = the direct, cheap render path (see gfx.js LITE): the target for weak phones / integrated GPUs. Resolution stays at 90% of native on low + medium (dynamic scaling off: it did not help fps and looked worse); the lite path is
+  // made cheap in every other way instead.
+  low:    { lite: true, pr: 3, res: 0.9, dyn: false, msaa: 0, bloom: false, shadows: 0, shadow: 512,  shadowFar: 120, cover: 26,  nearR: 100, farR: 520,  grass: 0.35, keep: 0.28, lod0: false, tileMin: 256, rays: false, minScale: 0.78, wild: false, traffic: false },
+  medium: { pr: 3, res: 0.9, dyn: false, msaa: 0, bloom: false, shadows: 1, shadow: 1024, shadowFar: 160, cover: 60,  nearR: 200, farR: 800,  grass: 1.8, keep: 0.75, lod0: false, tileMin: 128, rays: false, minScale: 0.5,  wild: true },
   high:   { pr: 1.25, msaa: 4, bloom: true,  shadows: 2, shadow: 2048, shadowFar: 380, cover: 100, nearR: 300, farR: 1500, grass: 3.0, keep: 1,    lod0: true, lod0R: 75,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
   ultra:  { pr: 1.75, msaa: 4, bloom: true,  shadows: 2, shadow: 4096, shadowFar: 450, cover: 130, nearR: 380, farR: 1900, grass: 3.6, keep: 1,    lod0: true,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
 };
@@ -68,7 +68,7 @@ class Game {
     this.dynScale = 1;
     this.dpr = Math.min(window.devicePixelRatio || 1, QP.pr);
     this.fixedPR = !!params.get('pr');
-    this.pixelRatio = this.fixedPR ? parseFloat(params.get('pr')) : this.dpr * S.renderScale;
+    this.pixelRatio = this.fixedPR ? parseFloat(params.get('pr')) : this.dpr * (QP.res ?? 1) * S.renderScale;
     renderer.setPixelRatio(this.pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
     renderer.shadowMap.enabled = !QP.lite;
@@ -111,7 +111,7 @@ class Game {
     status('Shaping terrain', 22); await tick();
     this.ground = new Ground(scene, this.world);
     this.far = new FarTerrain(scene, this.world, (offset) => {
-      const m = makeTerrainMaterial(); m.polygonOffset = true; m.polygonOffsetFactor = offset; m.polygonOffsetUnits = offset; return m;
+      const m = makeTerrainMaterial(true); m.polygonOffset = true; m.polygonOffsetFactor = offset; m.polygonOffsetUnits = offset; return m;
     });
     this.ground.terrainMat.polygonOffset = true; this.ground.terrainMat.polygonOffsetFactor = -1; this.ground.terrainMat.polygonOffsetUnits = -1;
     this.far.minSize = QP.tileMin;
@@ -204,6 +204,7 @@ class Game {
     if (isTouchDevice()) enableTouch(); else window.addEventListener('touchstart', enableTouch, { once: true, passive: true });
     $('unit').textContent = S.units === 'mph' ? 'mph' : 'km/h';
     if (!S.showHud) { $('hud').classList.add('hidden'); $('topbar').classList.add('hidden'); }
+    this.applyFps();
 
     // prime world
     status('Streaming terrain', 78); await tick();
@@ -262,6 +263,7 @@ class Game {
   reloadWorldSoon() { clearTimeout(this._rw); this.saveSettings(); this._rw = setTimeout(() => { location.search = ''; }, 900); }
   randomWorld() { this.changeSeed(1 + Math.floor(Math.random() * 99999)); }
   applyRenderScale() { this.resize(); }
+  applyFps() { const e = $('fps'); e.style.display = this.settings.showFps ? 'block' : 'none'; if (!this.settings.showFps) e.textContent = ''; }
   applyViewDistance() {
     const v = this.settings.viewDist;
     this.far.maxDist = 5200 * v + 800;
@@ -291,8 +293,7 @@ class Game {
     const w = window.innerWidth, h = window.innerHeight;
     if (!this.fixedPR) {
       let base = this.dpr;
-      if (LITE.on) base = Math.min(window.devicePixelRatio || 1, Math.sqrt(this.QP.maxPix / Math.max(1, w * h)));   // sharp, but never more than ~0.8 MP
-      this.pixelRatio = base * this.settings.renderScale * this.dynScale;
+      this.pixelRatio = base * (this.QP.res ?? 1) * this.settings.renderScale * this.dynScale;
     }
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h, false);
@@ -679,7 +680,7 @@ class Game {
     this.ground.update(this.vehicle.s, this.camera.position);
     this.roadside.update(this.vehicle.s);
     this.far.update(this.camera.position, 3);
-    if (this.trees) { this.trees.update(this.camera.position, 1); this.cover.update(this.camera.position, 1); }
+    if (this.trees) { this.trees.update(this.camera.position, LITE.on ? 2 : 1); this.cover.update(this.camera.position, 1); }
     if (this.traffic) this.traffic.update(this.paused ? 0 : dt, this.vehicle.s, this.vehicle.speed);
     if (this.wildlife && this.wildlife.enabled) {
       this.wildlife.setDay(clamp(this.sky.sunDir.y * 5 + 0.3, 0, 1) * (1 - this.weather.state.overcast * 0.4), U.uFogA.value);
@@ -740,6 +741,7 @@ class Game {
       $('rpmfill').style.width = clamp((v.rpm - 800) / 6000, 0, 1) * 100 + '%';
       const hh = Math.floor(this.hour), mm = Math.floor((this.hour - hh) * 60);
       $('clock').innerHTML = `${fmt12(this.hour)}<br><span style="opacity:.6">${(v.distance / 1000).toFixed(1)} km</span>`;
+      if (this.settings.showFps) $('fps').textContent = (this.fps > 0 ? Math.round(this.fps) : '--') + ' FPS';
       const st = $('stats');
       if (st.style.display === 'block') {
         const r = this.renderer.info.render;
@@ -749,7 +751,7 @@ class Game {
   }
 
   adaptResolution(rawDt) {
-    if (!this.settings.dynamicRes || this.fixedPR) return;
+    if (!this.settings.dynamicRes || this.fixedPR || this.QP.dyn === false) return;
     this._avgDt = this._avgDt ? this._avgDt * 0.96 + rawDt * 0.04 : rawDt;
     this._adaptT = (this._adaptT || 0) + rawDt;
     if (this._adaptT < 2.0 || document.hidden || this.paused) return;

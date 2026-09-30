@@ -10,16 +10,16 @@ const V3 = THREE.Vector3;
 // Wind / translucency shader patch shared by all foliage materials
 // ---------------------------------------------------------------------------
 // Distance based dither cross-fades: LOD0 -> LOD1 (x,y) and near instances -> merged far mesh (z,w).
-export const TF = { uTF: { value: new THREE.Vector4(70, 100, 240, 300) } };
+export const TF = { uTF: { value: new THREE.Vector4(70, 100, 240, 300) }, uFar: { value: new THREE.Vector2(1e5, 1e5 + 1) } };
 // mode 0: LOD0 geometry, 1: LOD1 geometry, 2: merged far geometry
 export function fadePatchTree(shader, mode) {
-  shader.uniforms.uTF = TF.uTF;
+  shader.uniforms.uTF = TF.uTF; shader.uniforms.uFar = TF.uFar;
   shader.vertexShader = shader.vertexShader
     .replace('#include <common>', '#include <common>\nvarying float vTreeD;')
     .replace('#include <project_vertex>', '#include <project_vertex>\nvTreeD = length(mvPosition.xyz);');
-  const keep = mode === 0 ? 'if (n < t1) discard;' : mode === 1 ? 'if (n >= t1 || n < tx) discard;' : 'if (n >= tx) discard;';
+  const keep = mode === 0 ? 'if (n < t1) discard;' : mode === 1 ? 'if (n >= t1 || n < tx) discard;' : 'if (n >= tx || n < smoothstep(uFar.x, uFar.y, vTreeD)) discard;';
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>\nvarying float vTreeD; uniform vec4 uTF;')
+    .replace('#include <common>', '#include <common>\nvarying float vTreeD; uniform vec4 uTF; uniform vec2 uFar;')
     .replace('#include <alphatest_fragment>', `{
       float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
       float t1 = smoothstep(uTF.x, uTF.y, vTreeD), tx = smoothstep(uTF.z, uTF.w, vTreeD);

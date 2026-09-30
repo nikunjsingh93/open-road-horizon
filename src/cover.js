@@ -331,6 +331,7 @@ export class GroundCover {
 
   update(cam, budget = 1) {
     this._cam = cam;
+    if (LITE.on) return;                     // low quality: trees only, no grass / rocks / bushes (they pop in and cost fill-rate)
     this.frame++;
     if (this.frame % 5 === 1) {
       const R = Math.ceil(this.radius / CELL);

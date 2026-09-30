@@ -266,6 +266,7 @@ export class TreeScatter {
     this.frame++;
     const cx0 = Math.floor(cam.x / CELL), cz0 = Math.floor(cam.z / CELL);
     const xfA = this.nearR - this.xfade, xfB = this.nearR;
+    TF.uFar.value.set(this.farR - 110, this.farR - 5);       // far trees dither out before the last cell ends: no visible pop at the edge
     if (this.useLod0) TF.uTF.value.set(this.lod0R - 30, this.lod0R, xfA, xfB); else TF.uTF.value.set(-300, -200, xfA, xfB);
     if (this.frame % 6 === 1) {
       const R = Math.ceil(this.farR / CELL) + 1;

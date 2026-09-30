@@ -123,7 +123,7 @@ export class FarTerrain {
         let h = w.heightRI(x, z);
         const d = w._tmp.d;
         // sink under the near strip so the two meshes never z-fight
-        if (d < 50) h -= 0.55 * (1 - smoothstep(30, 47, d));
+        if (d < 50) h -= 1.1 * (1 - smoothstep(34, 47, d));
         H[(j + 1) * W + (i + 1)] = h;
         if (i >= 0 && j >= 0 && i <= N && j <= N) {
           forest[j * (N + 1) + i] = w.forest(x, z);

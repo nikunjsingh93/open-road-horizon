@@ -104,12 +104,12 @@ src/fx.js          particles & skid marks                src/ui.js       setting
 
 The first visit picks a preset from the device (phones, tablets, ≤ 4 cores, ≤ 4 GB RAM and integrated GPUs start on **Low**; change it any time in
 settings). Low renders about 10× fewer triangles than High: no dynamic shadows (a soft blob under the car), half the trees drawn with the cheap
-LOD only, coarse far terrain, no god rays / bloom / MSAA and a lower resolution. Dynamic resolution runs on every preset, and if a device is still
+LOD only, coarse far terrain, no god rays / bloom / MSAA and a lower resolution. Low and Medium render at 90% of the native resolution (dynamic scaling is off there); on High/Ultra dynamic resolution runs, and if a device is still
 below ~28 fps at the lowest resolution the game sheds shadows, then vegetation and view distance by itself.
 
 **Low quality** uses a separate light-weight render path aimed at weak phones (e.g. Helio G100 / Mali): direct rendering with no post-processing target, no
 image based lighting or shadow maps (one sun + a hemisphere fill), a sky whose atmosphere is computed per vertex with a single cloud texture, and cheap
-terrain / road / water shaders, with ~a quarter of the trees and very little grass. Resolution is limited by a ~0.8 MP pixel budget instead of a tiny fixed scale.
+terrain / road / water shaders, with ~a quarter of the trees and no grass, flowers, rocks or bushes (trees only). Resolution is 90% of native. Turn on *Show FPS* in the settings to see the frame rate top right.
 
 ## Install as an app (PWA)
 

@@ -17,15 +17,21 @@ const T_COLS = (() => {
 // ---------------------------------------------------------------------------
 // Terrain material (procedural PBR-ish ground)
 // ---------------------------------------------------------------------------
-export function makeTerrainMaterial() {
+// far = material of the distant tiles: where they lie under the near strip they sink further the farther they are from the camera, so
+// depth-buffer precision (poor at range, awful on 16-bit phone depth buffers) can never let them flicker through the strip
+export function makeTerrainMaterial(far = false) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0.0 });
-  mat.userData.cacheKey = 'terrain';
+  mat.userData.cacheKey = far ? 'terrainfar' : 'terrain';
   patchMaterial(mat, (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         attribute vec4 aInfo; varying vec4 vInfo; varying vec3 vWPos; varying vec3 vWNor;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        vInfo = aInfo; vWPos = (modelMatrix * vec4(position,1.0)).xyz; vWNor = normal;`);
+        vInfo = aInfo; vWPos = (modelMatrix * vec4(position,1.0)).xyz; vWNor = normal;
+        ${far ? `if (aInfo.x < 47.0) {
+          float cd = length(vWPos.xz - cameraPosition.xz);
+          transformed.y -= (1.0 - smoothstep(34.0, 47.0, aInfo.x)) * clamp(cd * 0.005, 0.0, 4.0) * (1.0 - smoothstep(760.0, 880.0, cd));
+        }` : ''}`);
     if (LITE.on) {
       // cheap terrain: two value-noise lookups, everything else is flat colour mixing
       shader.fragmentShader = shader.fragmentShader

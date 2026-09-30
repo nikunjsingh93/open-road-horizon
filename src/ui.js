@@ -20,7 +20,7 @@ export function toggleFullscreen() {
 export const DEFAULTS = {
   time: 16.8, timeFlow: 'slow', weather: 'clear', season: 'summer', paint: 'red', units: 'kmh', quality: 'high',
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
-  viewDist: 1.0, grass: 1.0, showHud: true, shake: 1.0, mouse: 1.0,
+  viewDist: 1.0, grass: 1.0, showHud: true, showFps: false, shake: 1.0, mouse: 1.0,
   gearbox: 'auto', power: 1.0, grip: 1.0, tc: true,
   worldKind: 'mix', curvy: 1.0, hilly: 1.0, trails: true, wildlife: true, traffic: true,
 };
@@ -136,6 +136,10 @@ export class UI {
     fsLabel();
     fsb.onclick = () => { toggleFullscreen(); setTimeout(fsLabel, 250); };
     grid.appendChild(fs);
+    const fr = h('<div class="row"><label>Show FPS (top right)</label><input type="checkbox" style="width:18px;height:18px;accent-color:var(--acc);cursor:pointer"></div>');
+    const fcb = fr.querySelector('input'); fcb.checked = !!s.showFps;
+    fcb.onchange = () => { s.showFps = fcb.checked; g.applyFps(); g.saveSettings(); };
+    grid.appendChild(fr);
     seg('Quality preset', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], s.quality, (k) => { s.quality = k; g.saveSettings(); location.reload(); });
     slider('Render scale', 0.5, 1.6, 0.05, s.renderScale, (v) => { s.renderScale = v; g.applyRenderScale(); g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     seg('Dynamic resolution', [['on', 'On'], ['off', 'Off']], s.dynamicRes ? 'on' : 'off', (k) => { s.dynamicRes = k === 'on'; g.saveSettings(); });
