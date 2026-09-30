@@ -785,7 +785,7 @@ def build_headliner(cabin):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index == mi('Glass')], context='FACES')   # keep the windows open
     bm.faces.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if face_center(f).z < 0.93 and abs(f.normal.z) > 0.85], context='FACES')   # drop the flat cabin bottom (it would be a table at waist height)
-    front_roof = [f for f in bm.faces if face_center(f).y > 0.10 and face_center(f).z > 1.02]
+    front_roof = [f for f in bm.faces if face_center(f).y > 0.07 and face_center(f).z > 1.02]
     bmesh.ops.delete(bm, geom=front_roof, context='FACES')   # front roof panel: the driver looks out through here
     bm.faces.ensure_lookup_table()
     smooth_boundary(bm, 260)
@@ -806,7 +806,7 @@ def build_roof_lining():
     cols = []
     for j in range(nx + 1):
         u = -1 + 2 * j / nx
-        yf = 0.17 - 0.10 * u * u                                   # arched leading edge
+        yf = 0.095 - 0.05 * u * u                                   # arched leading edge
         col = []
         for i in range(ny + 1):
             y = -1.62 + (yf + 1.62) * (i / ny)
