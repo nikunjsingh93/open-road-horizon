@@ -74,7 +74,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   for (const sx of [-1, 1]) {
     const s = new THREE.SpotLight(0xfff0d8, 0, 240, 0.6, 0.75, 1.2);
     s.position.set(sx * 0.65, 0.7, -2.1);
-    s.target.position.set(sx * 0.65, 0.2, -30);
+    s.target.position.set(sx * 0.65, 0.0, -30);
     s.castShadow = false;
     root.add(s, s.target);
     spots.push(s);
@@ -218,13 +218,24 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
     setPaint(hex) { mats.CarPaint.color.setHex(hex); },
     // per-material reflection strength needs an explicit envMap (scene.environment ignores material.envMapIntensity)
     setEnv(tex) { curEnv = tex; for (const m of Object.values(paintMats)) { m.envMap = tex; m.needsUpdate = true; } for (const m of carMats) { const first = !m.envMap; m.envMap = tex; if (first) m.needsUpdate = true; } },
-    setBrake(on) { mats.TailLamp.emissiveIntensity = on ? 4.5 : 0.9 + api.night * 1.2; },
+    setBrake(on) { mats.TailLamp.emissiveIntensity = on ? 4.5 : 0.9 + (api.beam ? 1.2 : 0); },
     night: 0,
-    setNight(n) {
-      api.night = n;
-      mats.HeadLamp.emissiveIntensity = 1.0 + n * 6;
-      for (const s of spots) s.intensity = n * 620;
+    // beam: 0 off, 1 low beam, 2 high beam (night is only used for the tail-lamp glow)
+    setNight(n) { api.night = n; },
+    setBeam(mode) {
+      api.beam = mode;
+      mats.HeadLamp.emissiveIntensity = mode === 0 ? 1.0 : mode === 1 ? 3.0 : 5.5;
+      mats.TailLamp.emissiveIntensity = 0.9 + (mode ? 1.2 : 0);
+      for (const s of spots) {
+        s.intensity = mode === 0 ? 0 : mode === 1 ? 95 : 210;
+        s.angle = mode === 1 ? 0.5 : 0.36;
+        s.penumbra = mode === 1 ? 0.85 : 0.6;
+        s.distance = mode === 1 ? 70 : 150;
+        s.target.position.y = mode === 1 ? -0.9 : 0.5;      // low beams dip towards the road
+        s.target.position.z = -30;
+      }
     },
+    beam: 0,
   };
   return api;
 }

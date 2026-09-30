@@ -230,13 +230,15 @@ export function makeRoadMaterial() {
           float dash = smoothstep(0.0, 0.05 + aa, 3.0 - abs(mod(s, 12.0) - 6.0 ));   // 6 m dash, 6 m gap
           dash = step(mod(s, 12.0), 4.0) ;
           float dashSoft = smoothstep(0.0, aa*2., 4.0 - mod(s,12.0)) * smoothstep(0.0, aa*2., mod(s,12.0));
-          float center = aaLine(x, 0.075, aa) * dashSoft;
+          float center = max(aaLine(x - 0.13, 0.062, aa), aaLine(x + 0.13, 0.062, aa));   // US style: solid double yellow
           float paintMask = clamp(edge + center, 0., 1.);
           // paint wear
           float wear = 0.55 + 0.45*fbm2(vec2(x*8., s*8.));
           wear = mix(wear, 1.0, 0.0);
           paintMask *= smoothstep(.25,.6, wear + (1.-fadeHi)*.4) * (0.9 - tr*.15);
-          rCol = mix(base, paint * (0.85 + .15*sp), paintMask);
+          vec3 yellow = vec3(.70, .50, .05);
+          vec3 pcol = mix(paint, yellow, clamp(center / max(paintMask, 1e-3), 0., 1.));
+          rCol = mix(base, pcol * (0.85 + .15*sp), paintMask);
           // road edge fringe (dirt/gravel creeping onto tarmac) & edge darkening
           float ex = ${ROAD_HALF.toFixed(3)} - abs(x);
           float dirtE = (1.-smoothstep(.0,.55, ex + (vnoise(vec2(s*1.3, x*4.))-.5)*.5));

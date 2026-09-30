@@ -21,7 +21,8 @@ const THASH = 40;
 export const ROAD_HALF = 3.85;      // paved half width (2 lanes)
 export const LANE = 3.4;
 export const DS = 2.0;               // road sample spacing
-const HASH = 64;                     // spatial hash cell (m)
+const REACH = 124;                   // beyond this the free (uncarved) terrain is used
+const HASH = 128;                    // spatial hash cell (m): a 3x3 lookup always finds the road within 128 m
 
 // ---------------------------------------------------------------------------
 // Road: an infinite deterministic curve (arc-length parameterised), + a heightfield
@@ -130,7 +131,7 @@ export class World {
       if (t > 0.92 && t < 2.3) {
         // broad, flat-topped rock shelves and skerries with ragged edges (not needles)
         const sn = n.fbm(x * 0.011 + 9, z * 0.011 - 4, 3) + 0.12 * n.n2(x * 0.08, z * 0.08);
-        const blob = smoothstep(0.10, 0.24, sn);
+        const blob = smoothstep(0.04, 0.34, sn);
         const top = 3 + 9 * (0.5 + 0.5 * n.n2(x * 0.03, z * 0.03)) + 2.5 * n.n2(x * 0.15, z * 0.15);
         const shelf = -9 + blob * (top + 9) * smoothstep(0.92, 1.15, t) * (1 - smoothstep(1.7, 2.3, t));
         if (shelf > h) h = shelf;
@@ -436,7 +437,7 @@ export class World {
 
   // full terrain height at (x, z) given road info r (from nearest / nearestHint) - road carve first, then side tracks
   shape(nat, x, z, r) {
-    let h = (!r || r.d > 64) ? nat : this._carve(nat, r.y, r.d, x, z);
+    let h = (!r || r.d > REACH) ? nat : this._carve(nat, r.y, r.d, x, z);
     if (this.trailsOn && this.trails.length) h = this._trailCarve(h, x, z); else this.tdist = 99;
     return h;
   }
@@ -467,6 +468,7 @@ export class World {
     const hi = bed + 0.75 * rise;
     const lo = bed - (1.05 + 0.5 * (o.wc / wg)) * rise;
     let h = World.smax(World.smin(nat, hi, 1.4), lo, 1.4);
+    h = nat + (h - nat) * (1 - smoothstep(REACH - 40, REACH - 4, d));   // clamp fades out before the lookup radius ends
     h = bed + (h - bed) * smoothstep(4.8, 7.4, d);
     return free * (1 - wg) + h * wg;
   }
@@ -474,7 +476,7 @@ export class World {
   heightRI(x, z) { // also returns road info in this._tmp (valid until next call)
     const nat = this.natural(x, z);
     const r = this.nearest(x, z, this._tmp);
-    if (!r || r.d > 64) this._tmp.d = 999;
+    if (!r || r.d > REACH) this._tmp.d = 999;
     return this.shape(nat, x, z, r);
   }
 

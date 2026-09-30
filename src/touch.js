@@ -96,6 +96,7 @@ export function setupTouch(game) {
   };
   const gap = `calc(${T} + 14px + 8px)`;
   const place = (i) => `calc(${br} + ${i} * ${gap})`;
+  topBtn('Lights', { right: place(4) }, () => game.cycleLights());
   const menuB = topBtn('Menu', { right: place(0) }, () => game.ui.toggle());
   const camB = topBtn('Cam', { right: place(1) }, () => game.cycleCamera());
   const autoB = topBtn('Auto', { right: place(2) }, (b) => { game.auto = !game.auto; game.toast(game.auto ? 'Autopilot on' : 'Autopilot off'); b.classList.toggle('act', game.auto); }, true);

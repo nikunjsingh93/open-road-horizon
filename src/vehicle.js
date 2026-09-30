@@ -230,8 +230,10 @@ export class Vehicle {
       const vComp = (wh.comp - wh.prevComp) / dt;
       const other = this.wheels[wi ^ 1];
       let f = wh.k * comp + (vComp > 0 ? S.cBump : S.cReb) * vComp + wh.arb * (comp - other.comp);
-      if (comp > S.maxComp) f += 200000 * (comp - S.maxComp);
+      if (comp > S.maxComp) f += 60000 * (comp - S.maxComp);
       if (f < 0) f = 0;
+      // bump stops can't push harder than the chassis is heavy several times over, and do nothing once the car is on its side
+      f = Math.min(f, 15000) * Math.min(1, Math.max(0, (up.y - 0.25) * 3));
       wh.fz = f;
       cp.copy(org).addScaledVector(up, -t0);
       this.groundNormal(cp.x, cp.z, wh.normal);
@@ -331,10 +333,55 @@ export class Vehicle {
     const om = this.omega, hq = 0.5 * dt;
     const dq = this._dq.set(om.x * hq, om.y * hq, om.z * hq, 0).multiply(this.quat);
     this.quat.set(this.quat.x + dq.x, this.quat.y + dq.y, this.quat.z + dq.z, this.quat.w + dq.w).normalize();
+    this._bodyCollide(dt);
     this.onGround = contacts;
     this.slip = slipMax;
     for (const wh of this.wheels) wh.spin += wh.omega * dt;
     this._gearbox();
+  }
+
+  // Rigid chassis-vs-terrain contact. The wheel rays only reach 0.6 m, so after a big drop (or in a tumble) the body could sink
+  // through the ground; these hull points guarantee it never does and give a natural thump / roll instead.
+  _bodyCollide(dt) {
+    const H = this._hull || (this._hull = [
+      [-0.78, -0.30, -1.4], [0.78, -0.30, -1.4], [-0.78, -0.30, 1.4], [0.78, -0.30, 1.4], [0, -0.30, 0],
+      [-0.7, 0.42, -0.5], [0.7, 0.42, -0.5], [-0.7, 0.42, 0.9], [0.7, 0.42, 0.9], [0, 0.45, 0.2],
+    ].map(a => new V3(...a)));
+    const p = this._hp || (this._hp = new V3()), rr = this._hr || (this._hr = new V3()), n = this._hn || (this._hn = new V3()), t1 = this._ht || (this._ht = new V3()), rxn = this._hx || (this._hx = new V3());
+    // fail-safe against tunnelling at extreme speeds
+    const g0 = this.ground(this.pos.x, this.pos.z, this.gh);
+    if (this.pos.y < g0 - 1.2) { this.pos.y = g0 + 0.9; if (this.vel.y < 0) this.vel.y *= -0.1; }
+    for (let i = 0; i < H.length; i++) {
+      rr.copy(H[i]).applyQuaternion(this.quat);
+      p.copy(this.pos).add(rr);
+      const gh = this.ground(p.x, p.z, this.gh);
+      const pen = gh - p.y;
+      if (pen <= 0) continue;
+      this.groundNormal(p.x, p.z, n);
+      if (n.y < 0.2) n.set(0, 1, 0);
+      this.pos.addScaledVector(n, Math.min(pen, 2.5) * 0.9);
+      // velocity of the contact point along the normal
+      t1.copy(this.omega).cross(rr).add(this.vel);
+      const vn = t1.dot(n);
+      if (vn < 0) {
+        rxn.copy(rr).cross(n);
+        const k = 1 / SPEC.mass + rxn.lengthSq() / 2200;
+        const j = Math.min(-(1.06 * vn) / k, SPEC.mass * 26) * (vn < -1.5 ? 0.62 : 1);     // mostly inelastic, capped so a 50 m drop is a thump, not an explosion
+        this.vel.addScaledVector(n, j / SPEC.mass);
+        this.omega.addScaledVector(rxn, j / 2200 * 0.8);
+        // ground friction on the scraping body
+        const vt = t1.copy(this.vel).addScaledVector(n, -this.vel.dot(n));   // (t1 is free again here)
+        this.vel.addScaledVector(vt, -Math.min(0.06 + 0.4 * dt * 10, 0.5) * (i >= 5 ? 1.5 : 1));
+        this.omega.multiplyScalar(0.985);
+      }
+    }
+    // numerical safety net
+    const ol = this.omega.length(); if (ol > 9) this.omega.multiplyScalar(9 / ol);
+    const vl = this.vel.length(); if (vl > 130) this.vel.multiplyScalar(130 / vl);
+    if (!(vl < 1e6) || !(ol < 1e6) || !isFinite(this.pos.x + this.pos.y + this.pos.z + this.quat.w)) {
+      this.vel.set(0, 0, 0); this.omega.set(0, 0, 0); this.quat.set(0, 0, 0, 1);
+      this.pos.y = this.ground(this.pos.x || 0, this.pos.z || 0, this.gh) + 1;
+    }
   }
 
   // manual gearbox: -1 = R, 0 = N, 1..6 - any gear can be picked at any time (the rev limiter protects the engine)

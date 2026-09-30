@@ -278,6 +278,7 @@ class Game {
         case 'Escape': case 'KeyP': this.ui.toggle(); break;
         case 'KeyC': this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); break;
         case 'KeyV': this.cycleCamera(); break;
+        case 'KeyL': this.cycleLights(); break;
         case 'KeyE': this.shift(1); break;
         case 'KeyQ': this.shift(-1); break;
         case 'Digit0': this.vehicle.setGear(0); break;
@@ -322,6 +323,11 @@ class Game {
     const v = this.vehicle;
     if (!v.manual) return;
     if (d > 0) v.shiftUp(); else v.shiftDown();
+  }
+
+  cycleLights() {
+    this.lightMode = ((this.lightMode | 0) + 1) % 3;      // off -> low -> high -> off
+    this.toast(['Headlights off', 'Low beam', 'High beam'][this.lightMode]);
   }
 
   toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(this._tt); this._tt = setTimeout(() => t.style.opacity = 0, 1800); }
@@ -438,7 +444,11 @@ class Game {
     const v = this.vehicle;
     this.car.setBrake(v.brake > 0.2 || v.handbrake > 0.5);
     const n = (this.sky.sunDir.y < 0.07 || (this.weather.state.overcast > 0.8 && this.sky.sunDir.y < 0.25)) ? 1 : 0;
-    if (n !== this._nightLights) { this._nightLights = n; this.car.setNight(n); }
+    if (n !== this._nightLights) {
+      this._nightLights = n; this.car.setNight(n);
+      this.lightMode = n ? 1 : 0;          // dusk switches the low beams on, dawn switches them off; the L key overrides at any time
+    }
+    if (this.lightMode !== this._lightApplied) { this._lightApplied = this.lightMode; this.car.setBeam(this.lightMode); }
   }
 
   updateEffects(dt) {
