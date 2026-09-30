@@ -20,13 +20,14 @@ export class FarTerrain {
     this.materialFactory = materialFactory;
     this.frame = 0;
     this.maxDist = 7500;
+    this.minSize = MIN_SIZE;
     this.stats = { tiles: 0 };
     this.H = new Float32Array((N + 3) * (N + 3));
     this.waterMat = makeWaterMaterial();
   }
 
   _mat(size) {
-    const lvl = Math.round(Math.log2(size / MIN_SIZE));
+    const lvl = Math.round(Math.log2(size / this.minSize));
     if (!this.mats[lvl]) this.mats[lvl] = this.materialFactory(1 + lvl * 1.5);
     return this.mats[lvl];
   }
@@ -37,7 +38,7 @@ export class FarTerrain {
     const dz = Math.max(z0 - cam.z, 0, cam.z - (z0 + size));
     const d = Math.hypot(dx, dz);
     if (d > this.maxDist) return;
-    if (size > MIN_SIZE && d < size * 1.15) {
+    if (size > this.minSize && d < size * 1.15) {
       const h = size / 2;
       this._collect(x0, z0, h, cam, out); this._collect(x0 + h, z0, h, cam, out);
       this._collect(x0, z0 + h, h, cam, out); this._collect(x0 + h, z0 + h, h, cam, out);

@@ -26,8 +26,25 @@ export const DEFAULTS = {
 };
 
 const KEY = 'openroad.settings.v1';
+// First visit: pick a sensible preset from the device (phones / tablets / few cores / little memory / integrated GPUs -> low)
+export function detectQuality() {
+  try {
+    const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+    let gpu = '';
+    try { const c = document.createElement('canvas'), gl = c.getContext('webgl'); const e = gl && gl.getExtension('WEBGL_debug_renderer_info'); gpu = e ? String(gl.getParameter(e.UNMASKED_RENDERER_WEBGL)) : ''; } catch (err) { /* ignore */ }
+    const weakGpu = /Intel(R) (HD|UHD)|Mali|Adreno|PowerVR|SwiftShader|llvmpipe|Microsoft Basic|Vega [3-8]/i.test(gpu);
+    if (mobile || weakGpu || cores <= 4 || mem <= 4) return 'low';
+    if (cores <= 6 || /Intel|Iris/i.test(gpu)) return 'medium';
+    return 'high';
+  } catch (e) { return 'medium'; }
+}
 export function loadSettings() {
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch (e) { return { ...DEFAULTS }; }
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { ...DEFAULTS, quality: detectQuality() };
+    return { ...DEFAULTS, ...JSON.parse(raw) };
+  } catch (e) { return { ...DEFAULTS }; }
 }
 export function saveSettings(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* ignore */ } }
 

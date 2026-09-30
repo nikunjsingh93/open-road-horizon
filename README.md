@@ -99,3 +99,10 @@ src/fx.js          particles & skid marks                src/ui.js       setting
 * three.js' CSM add-on ships an outdated `lights_fragment_begin` chunk that silently zeroes all specular lighting on
   r18x; `makeCSMSafe()` in `src/gfx.js` splices its cascaded-shadow block into three's current chunk instead.
 * Dev-only helper: `window.__snap('name')` saves the canvas to `shots/name.png` through the Vite dev server.
+
+## Performance
+
+The first visit picks a preset from the device (phones, tablets, ≤ 4 cores, ≤ 4 GB RAM and integrated GPUs start on **Low**; change it any time in
+settings). Low renders about 10× fewer triangles than High: no dynamic shadows (a soft blob under the car), half the trees drawn with the cheap
+LOD only, coarse far terrain, no god rays / bloom / MSAA and a lower resolution. Dynamic resolution runs on every preset, and if a device is still
+below ~28 fps at the lowest resolution the game sheds shadows, then vegetation and view distance by itself.

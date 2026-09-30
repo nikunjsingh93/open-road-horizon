@@ -77,3 +77,20 @@ export function installBuriedTest(game) {
     return { worstBuried: +worst.toFixed(2), meanBuried: +(sum / n).toFixed(3), maxHover: +maxAir.toFixed(2), kmh: Math.round(v.speedKmh) };
   };
 }
+
+// Render-cost breakdown for the current view: window.__perf() -> ms per frame with parts switched off (GPU included via finish()).
+export function installPerf(game) {
+  const g = game;
+  window.__perf = () => {
+    const gl = g.renderer.getContext();
+    const time = (n = 12) => { g.render(); gl.finish(); const t0 = performance.now(); for (let i = 0; i < n; i++) { g.render(); gl.finish(); } return +((performance.now() - t0) / n).toFixed(1); };
+    const info = () => { const r = g.renderer.info.render; return { calls: r.calls, tris: Math.round(r.triangles / 1000) + 'k' }; };
+    const out = { size: [g.renderer.domElement.width, g.renderer.domElement.height], full: time(), ...info() };
+    const tog = (name, objs, on) => { for (const o of objs) o.visible = on; };
+    const parts = { trees: [g.trees && g.trees.group], cover: [g.cover && g.cover.group], far: [g.far.group], ground: [g.ground.group], wildlife: [g.wildlife && g.wildlife.group], roadside: [g.roadside && g.roadside.group] };
+    for (const [k, objs] of Object.entries(parts)) { const o = objs.filter(Boolean); const prev = o.map(x => x.visible); tog(k, o, false); out['no_' + k] = time(); o.forEach((x, i) => x.visible = prev[i]); }
+    const lights = g.csm.lights.map(l => l.castShadow); g.csm.lights.forEach(l => l.castShadow = false); g.renderer.shadowMap.autoUpdate = false; out.no_shadowcast = time(); g.csm.lights.forEach((l, i) => l.castShadow = lights[i]); g.renderer.shadowMap.autoUpdate = true;
+    const passes = g.composer.passes.map(p => p.enabled); g.composer.passes.forEach((p, i) => { if (i > 0) p.enabled = false; }); out.only_scene_pass = time(); g.composer.passes.forEach((p, i) => p.enabled = passes[i]);
+    return out;
+  };
+}

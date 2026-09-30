@@ -14,6 +14,9 @@ export class TreeScatter {
     this.scene = scene; this.world = world;
     this.nearR = opts.nearR ?? 300;
     this.farR = opts.farR ?? 1500;
+    this.keep = opts.keep ?? 1;                 // fraction of trees actually created (low quality thins the forest)
+    this.useLod0 = opts.lod0 !== false;         // the detailed LOD0 trees (high / ultra only)
+    this.castShadow = opts.castShadow !== false;
     this.lod0R = opts.lod0R ?? 95;   // LOD0 -> LOD1 dither band is [lod0R-30, lod0R]
     this.xfade = 60;                 // near instances -> merged far mesh band is [nearR-60, nearR]
     this.spacing = opts.spacing ?? 6.2;
@@ -53,12 +56,12 @@ export class TreeScatter {
         }
       }
       const lb = new THREE.BatchedMesh(cap[lod].leaf, leafV + 64, leafI + 64, lib.leafMats[lod]);
-      lb.sortObjects = false; lb.frustumCulled = false; lb.castShadow = true; lb.receiveShadow = true;
+      lb.sortObjects = false; lb.frustumCulled = false; lb.castShadow = this.castShadow; lb.receiveShadow = true;
       this.group.add(lb); this.leafBatch[lod] = lb;
       this.barkBatch[lod] = {};
       for (const n of SPECIES_LIST) {
         const bm = new THREE.BatchedMesh(cap[lod].bark, barkV[n] + 64, barkI[n] + 64, lib.barkMats[n][lod]);
-        bm.sortObjects = false; bm.frustumCulled = false; bm.castShadow = true; bm.receiveShadow = true;
+        bm.sortObjects = false; bm.frustumCulled = false; bm.castShadow = this.castShadow; bm.receiveShadow = true;
         this.group.add(bm); this.barkBatch[lod][n] = bm;
       }
     }
@@ -129,6 +132,7 @@ export class TreeScatter {
       if (!list) continue;
       for (let i = 0; i < list.length; i++) {
         const t = list[i];
+        if (t.r > this.keep) continue;
         const ddx = x - t.x, ddz = z - t.z;
         if (Math.abs(ddx) > 3 || Math.abs(ddz) > 3) continue;
         const rr = r + (t.sp === 'spruce' ? 0.34 : t.sp === 'birch' ? 0.2 : 0.42) * t.s;
@@ -145,6 +149,7 @@ export class TreeScatter {
     const inst = [];
     const bark = this.barkBatch[1], leaf = this.leafBatch[1];
     for (const t of list) {
+      if (t.r > this.keep) continue;
       const bi = bark[t.sp].addInstance(this.barkGid[t.sp][t.v][1]);
       const li = leaf.addInstance(this.leafGid[t.sp][t.v][1]);
       this._compose(t);
@@ -204,7 +209,7 @@ export class TreeScatter {
     let nv = 0, ni = 0;
     const use = [];
     for (const t of list) {
-      if (thin < 1 && t.r > thin) continue;
+      if ((thin < 1 && t.r > thin) || t.r > this.keep) continue;
       use.push(t);
       const g = lib.geo[t.sp][t.v][2].leaf;
       nv += g.attributes.position.count; ni += g.index.count;
@@ -261,7 +266,7 @@ export class TreeScatter {
     this.frame++;
     const cx0 = Math.floor(cam.x / CELL), cz0 = Math.floor(cam.z / CELL);
     const xfA = this.nearR - this.xfade, xfB = this.nearR;
-    TF.uTF.value.set(this.lod0R - 30, this.lod0R, xfA, xfB);
+    if (this.useLod0) TF.uTF.value.set(this.lod0R - 30, this.lod0R, xfA, xfB); else TF.uTF.value.set(-300, -200, xfA, xfB);
     if (this.frame % 6 === 1) {
       const R = Math.ceil(this.farR / CELL) + 1;
       const want = new Set();
@@ -328,7 +333,7 @@ export class TreeScatter {
       const cell = list[ci];
       for (const o of cell.inst) {
         const dx = o.t.x - cam.x, dz = o.t.z - cam.z, d2 = dx * dx + dz * dz;
-        if (o.b0 < 0) { if (d2 < add2) this._addLod0(o); }
+        if (o.b0 < 0) { if (this.useLod0 && d2 < add2) this._addLod0(o); }
         else if (d2 > drop2) this._dropLod0(o);
         // the LOD1 copy is completely faded out inside the LOD0 zone: skip drawing it
         const vis = d2 > hide2 || o.b0 < 0;

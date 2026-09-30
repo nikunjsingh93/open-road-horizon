@@ -20,7 +20,7 @@ import { Particles, SkidMarks } from './fx.js';
 import { setupTouch, isTouchDevice } from './touch.js';
 import { Wildlife } from './wildlife.js';
 import { Traffic } from './traffic.js';
-import { installDevTools, installSurfaceTest, installBuriedTest } from './devtools.js';
+import { installDevTools, installSurfaceTest, installBuriedTest, installPerf } from './devtools.js';
 import { UI, loadSettings, saveSettings, timeFlowRate, fmt12, toggleFullscreen } from './ui.js';
 import { clamp } from './noise.js';
 
@@ -28,11 +28,16 @@ const params = new URLSearchParams(location.search);
 const $ = id => document.getElementById(id);
 const tick = () => new Promise(r => setTimeout(r, 0));
 
+// Quality presets. The expensive things, in order: dynamic shadows (every tree is drawn again in each cascade), tree triangles,
+// far-terrain draw calls, grass overdraw, post-processing and resolution. 'low' switches all of them to a light-weight setup:
+// no dynamic shadows (a soft blob under the car instead), only a fraction of the trees (cheap LOD only), coarse far terrain.
+//   shadows: 0 = off, 1 = sun shadows on terrain / car only, 2 = trees cast shadows too
+//   keep: fraction of trees kept, tileMin: smallest far-terrain tile (m), rays: god rays, minScale: lowest dynamic resolution
 const QUALITY = {
-  low:    { pr: 0.8,  msaa: 0, bloom: false, shadow: 1024, shadowFar: 200, cover: 55,  nearR: 200, farR: 900,  grass: 1.6 },
-  medium: { pr: 1.0,  msaa: 2, bloom: true,  shadow: 1536, shadowFar: 300, cover: 80,  nearR: 260, farR: 1200, grass: 2.4 },
-  high:   { pr: 1.25, msaa: 4, bloom: true,  shadow: 2048, shadowFar: 380, cover: 100, nearR: 300, farR: 1500, grass: 3.0 },
-  ultra:  { pr: 1.75, msaa: 4, bloom: true,  shadow: 4096, shadowFar: 450, cover: 130, nearR: 380, farR: 1900, grass: 3.6 },
+  low:    { pr: 0.75, msaa: 0, bloom: false, shadows: 0, shadow: 512,  shadowFar: 120, cover: 34,  nearR: 120, farR: 520,  grass: 0.9, keep: 0.5,  lod0: false, tileMin: 256, rays: false, minScale: 0.45, wild: false },
+  medium: { pr: 0.9,  msaa: 0, bloom: false, shadows: 1, shadow: 1024, shadowFar: 160, cover: 60,  nearR: 200, farR: 800,  grass: 1.8, keep: 0.75, lod0: false, tileMin: 128, rays: false, minScale: 0.5,  wild: true },
+  high:   { pr: 1.25, msaa: 4, bloom: true,  shadows: 2, shadow: 2048, shadowFar: 380, cover: 100, nearR: 300, farR: 1500, grass: 3.0, keep: 1,    lod0: true, lod0R: 75,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
+  ultra:  { pr: 1.75, msaa: 4, bloom: true,  shadows: 2, shadow: 4096, shadowFar: 450, cover: 130, nearR: 380, farR: 1900, grass: 3.6, keep: 1,    lod0: true,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
 };
 
 class Game {
@@ -81,8 +86,9 @@ class Game {
     this.setTime(this.hour);
 
     // --- cascaded shadows (must exist before materials are created) ---
+    this.shadowsOn = QP.shadows > 0;
     this.csm = makeCSMSafe(() => new CSM({
-      maxFar: QP.shadowFar, cascades: 3, mode: 'practical', parent: scene, camera,
+      maxFar: QP.shadowFar, cascades: QP.shadows >= 2 ? 3 : 2, mode: 'practical', parent: scene, camera,
       shadowMapSize: QP.shadow, lightDirection: new THREE.Vector3(-0.4, -1, -0.3).normalize(),
       lightIntensity: 3, shadowBias: -0.0003, lightNear: 1, lightFar: 2500, lightMargin: 300,
     }));
@@ -97,16 +103,17 @@ class Game {
       const m = makeTerrainMaterial(); m.polygonOffset = true; m.polygonOffsetFactor = offset; m.polygonOffsetUnits = offset; return m;
     });
     this.ground.terrainMat.polygonOffset = true; this.ground.terrainMat.polygonOffsetFactor = -1; this.ground.terrainMat.polygonOffsetUnits = -1;
-    this.far.maxDist = 5200 * S.viewDist + 800;
+    this.far.minSize = QP.tileMin;
+    this.far.maxDist = (QP.tileMin > 100 ? 3600 : 5200) * S.viewDist + 800;
 
     this.roadside = new Roadside(scene, this.world);
     status('Growing forests', 34); await tick();
     if (params.get('trees') !== '0') {
-      this.trees = new TreeScatter(scene, this.world, { nearR: QP.nearR, farR: QP.farR * S.viewDist, lod0R: 100, season: S.season });
+      this.trees = new TreeScatter(scene, this.world, { nearR: QP.nearR, farR: QP.farR * S.viewDist, lod0R: QP.lod0R || 100, season: S.season, keep: QP.keep, lod0: QP.lod0, castShadow: QP.shadows >= 2 });
       status('Planting meadows', 46); await tick();
       this.cover = new GroundCover(scene, this.world, this.trees.lib, { radius: QP.cover, density: QP.grass * S.grass, season: S.season });
     }
-    this.wildlife = new Wildlife(scene, this.world, { enabled: S.wildlife !== false && QP !== QUALITY.low, radius: QP.cover * 2.3 });
+    this.wildlife = new Wildlife(scene, this.world, { enabled: S.wildlife !== false && QP.wild, radius: QP.cover * 2.3 });
 
     // --- vehicle ---
     status('Building the car', 56); await tick();
@@ -121,6 +128,15 @@ class Game {
     this.car.root.position.y = -SPEC.comH;
     scene.add(this.carRoot);
     this._qinv = new THREE.Quaternion();
+    {   // contact shadow (used when dynamic shadows are off)
+      const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+      const gr = x.createRadialGradient(32, 32, 4, 32, 32, 31); gr.addColorStop(0, 'rgba(0,0,0,0.62)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.32)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+      const t = new THREE.CanvasTexture(c);
+      this.blob = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 5.4), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false }));
+      this.blob.rotation.x = -Math.PI / 2; this.blob.renderOrder = 3; this.blob.frustumCulled = false; this.blob.visible = false;
+      this.blobHolder = new THREE.Group(); this.blobHolder.add(this.blob); scene.add(this.blobHolder);
+    }
     this.traffic = new Traffic(scene, this.world, this.car, this.vehicle.wheels.map(w => ({ x: w.local.x, z: w.local.z })));
     this.traffic.setEnabled(S.traffic !== false);
 
@@ -156,6 +172,7 @@ class Game {
     this.renderPass = new RenderPass(scene, camera);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.16, 0.55, 1.6);
     this.grade = new ShaderPass(GradeShader);
+    if (!QP.rays) this.grade.uniforms.uRays.value = 0;
     this.composer.addPass(this.renderPass);
     if (QP.bloom) this.composer.addPass(this.bloom);
     this.composer.addPass(this.grade);
@@ -189,7 +206,7 @@ class Game {
     this.hudEl = $('hud');
     this.loop = this.loop.bind(this);
     window.__game = this;
-    if (import.meta.env.DEV) { installDevTools(this); installSurfaceTest(this); installBuriedTest(this); }
+    if (import.meta.env.DEV) { installDevTools(this); installSurfaceTest(this); installBuriedTest(this); installPerf(this); }
     window.__snap = async (name = 'shot') => { this.composer.render(); const url = this.canvas.toDataURL('image/png'); await fetch('/__save?name=' + name, { method: 'POST', body: url }); return 'saved ' + name; };
     this.frame(0.0001);
     this.composer.render();          // warm up shaders
@@ -449,6 +466,11 @@ class Game {
       w.pivot.rotation.set(0, -wh.steerA, 0);
       w.spinner.rotation.x = -wh.spin;
     }
+    if (this.blob) {
+      const show = !this.shadowsOn && v.onGround > 1 && this.sky.sunDir.y > -0.05;
+      this.blob.visible = show;
+      if (show) { this.blobHolder.position.set(v.pos.x, v.pos.y - SPEC.comH + 0.06, v.pos.z); this.blobHolder.quaternion.setFromAxisAngle(this._up, Math.atan2(-v.fwd.x, -v.fwd.z)); }
+    }
     U.uCar.value.set(v.pos.x, v.pos.z, v.fwd.x, v.fwd.z).setW(v.fwd.z);
     { const l = Math.hypot(v.fwd.x, v.fwd.z) || 1; U.uCar.value.z = v.fwd.x / l; U.uCar.value.w = v.fwd.z / l; }
     const inside = this.camMode === 'cockpit' || this.camMode === 'hood';
@@ -585,13 +607,13 @@ class Game {
     const mx = Math.max(sc.r, sc.g, sc.b, 1e-3);
     if (day > 0.001) {
       this.csm.lightDirection.copy(sd).negate();
-      for (const l of this.csm.lights) { l.color.copy(sc).multiplyScalar(1 / mx); l.intensity = 6.8 * mx * day + 0.0001; l.castShadow = day > 0.02; }
+      for (const l of this.csm.lights) { l.color.copy(sc).multiplyScalar(1 / mx); l.intensity = 6.8 * mx * day + 0.0001; l.castShadow = this.shadowsOn && day > 0.02; }
     } else {
       // moonlight
       this.csm.lightDirection.copy(sd);
       const md = clamp(-sd.y * 5, 0, 1);
       // moonlight: cool grey-blue and strong enough to read the road, trees and hills without headlights
-      for (const l of this.csm.lights) { l.color.setRGB(0.78, 0.83, 0.92); l.intensity = 0.85 * md * (1 - this.sky.overcast * 0.5); l.castShadow = md > 0.3; }
+      for (const l of this.csm.lights) { l.color.setRGB(0.78, 0.83, 0.92); l.intensity = 0.85 * md * (1 - this.sky.overcast * 0.5); l.castShadow = this.shadowsOn && md > 0.3; }
     }
     // soft grey sky-glow fill at night (scaled up as the sun drops, off in daylight)
     this.scene.environmentIntensity = 1.7 + 0.75 * this.sky.night * (1 - this.sky.overcast * 0.4);
@@ -706,9 +728,24 @@ class Game {
     this._adaptT = 0;
     const fps = 1 / this._avgDt;
     let ds = this.dynScale;
-    if (fps < 50) ds = Math.max(0.55, ds * (fps < 35 ? 0.85 : 0.94));
+    const floor = this.QP.minScale ?? 0.55;
+    if (fps < 50) ds = Math.max(floor, ds * (fps < 35 ? 0.85 : 0.94));
     else if (fps > 57 && ds < 1) ds = Math.min(1, ds * 1.04);
     if (Math.abs(ds - this.dynScale) > 0.01) { this.dynScale = ds; this.resize(); }
+    // already at the lowest resolution and still slow: shed detail live (shadows, then grass + far trees), once each
+    this._slow = (fps < 28 && ds <= floor + 0.02) ? (this._slow || 0) + 1 : 0;
+    if (this._slow >= 3) { this._slow = 0; this.degrade(); }
+  }
+
+  degrade() {
+    this._deg = (this._deg || 0) + 1;
+    if (this._deg === 1 && this.shadowsOn) { this.shadowsOn = false; this.toast('Slow device detected: shadows off'); }
+    else if (this._deg <= 2) {
+      this.settings.grass = Math.max(0.3, this.settings.grass * 0.5); this.applyGrass();
+      if (this.trees) this.trees.farR = Math.max(300, this.trees.farR * 0.6);
+      if (this.far) this.far.maxDist = Math.max(1800, this.far.maxDist * 0.6);
+      this.toast('Slow device detected: reduced vegetation and view distance');
+    } else if (this._deg === 3) this.toast('Still slow? Set Quality to Low in settings');
   }
 
   loop() {
