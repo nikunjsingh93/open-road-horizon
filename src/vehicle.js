@@ -81,6 +81,19 @@ export class Vehicle {
 
   maxSteer(v) { return Math.min(0.60, 0.62 / (1 + (v / 14) * (v / 14)) + 0.07); }
 
+  // put the car at an arbitrary spot, upright, heading along direction (dx, dz) - used to recover onto a side track
+  placeAt(x, y, z, dx, dz, speed = 0) {
+    const th = Math.atan2(dx, -dz);                 // road-style heading: forward = (sin th, -cos th)
+    this.pos.set(x, y + SPEC.comH + 0.12, z);
+    this.quat.setFromAxisAngle(new V3(0, 1, 0), -th);
+    this.vel.set(Math.sin(th) * speed, 0, -Math.cos(th) * speed);
+    this.omega.set(0, 0, 0);
+    for (const wh of this.wheels) { wh.omega = speed / SPEC.radius; wh.comp = 0.08; wh.prevComp = 0.08; }
+    this.gear = speed > 3 ? Math.min(6, 1 + Math.floor(speed / 7)) : 1;
+    this.rpm = SPEC.idle; this.steerAngle = 0; this.shiftTimer = 0;
+    this.updateBasis();
+  }
+
   place(s, lane = 1.7, speed = 0) {
     const w = this.world;
     const c = w.at(s, {});
@@ -186,7 +199,8 @@ export class Vehicle {
     const ratio = this.gear > 0 ? ratioAbs : this.gear < 0 ? -ratioAbs : 0;
     const wheelRpm = Math.abs(rearOmega) * 60 / (2 * Math.PI) * ratioAbs;
     const clutchRpm = S.idle + (this.gear === 0 ? 4800 : 1300) * this.throttle;
-    const engaged = smoothstep(clutchRpm * 0.9, clutchRpm * 1.35, wheelRpm);
+    const grip = (this.wheels[2].contact || this.wheels[3].contact) && this.up.y > 0.35 ? 1 : 0;
+    const engaged = grip * smoothstep(clutchRpm * 0.9, clutchRpm * 1.35, wheelRpm);
     let rpm = Math.max(S.idle, wheelRpm * engaged + clutchRpm * (1 - engaged));
     if (this.shiftTimer > 0) { this.shiftTimer -= dt; rpm = Math.max(S.idle, rpm * 0.96); }
     this.rpm += (rpm - this.rpm) * clamp(dt * 25, 0, 1);
@@ -222,7 +236,7 @@ export class Vehicle {
         wh.comp = 0; wh.fz = 0;
         wh.hub.copy(org).addScaledVector(up, -(S.rayLen - S.radius));
         wh.omega += dt * (wh.drive ? drivenTorque / 2 : 0) / S.wheelInertia;
-        wh.omega = clamp(wh.omega * (1 - dt * 0.25), -420, 420);
+        wh.omega = clamp(wh.omega * (1 - dt * (this.throttle > 0.05 ? 0.25 : 2.2)), -420, 420);
         continue;
       }
       contacts++;
