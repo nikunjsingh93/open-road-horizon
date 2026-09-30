@@ -114,4 +114,4 @@ terrain / road / water shaders, with ~a quarter of the trees and no grass, flowe
 ## Install as an app (PWA)
 
 Open the game in Chrome / Edge / Safari and choose **Install app** / **Add to Home Screen**. After the first load it works offline
-(a service worker caches the game and the car model). It starts full-screen in landscape.
+(a service worker caches the game and the car model). It starts full-screen (manifest `display: fullscreen`, no title / status bar) in landscape. If an already-installed copy still shows the title bar, remove it and install again so the phone picks up the new manifest.

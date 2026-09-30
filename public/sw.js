@@ -1,7 +1,7 @@
 // Open Road service worker: makes the game installable and playable offline.
 //  - the page (index.html) is fetched network-first so new deployments show up, falling back to the cache offline
 //  - hashed JS/CSS and everything else is served cache-first and refreshed in the background
-const VERSION = 'openroad-v1';
+const VERSION = 'openroad-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './assets/car.glb'];
 
 self.addEventListener('install', (e) => {

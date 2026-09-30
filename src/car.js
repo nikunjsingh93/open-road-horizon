@@ -10,7 +10,7 @@ function makeMaterials() {
   const m = {};
   const Phys = LITE.on ? (o) => { const { clearcoat, clearcoatRoughness, ...rest } = o; return new THREE.MeshStandardMaterial(rest); } : (o) => new THREE.MeshPhysicalMaterial(o);
   m.CarPaint = Phys({ color: PAINTS.red, metalness: 0.2, roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.18, envMapIntensity: 0.65 });
-  m.Glass = Phys({ color: 0x06090c, metalness: 0.0, roughness: 0.1, transparent: true, opacity: 0.66, envMapIntensity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  m.Glass = Phys({ color: 0x030507, metalness: 0.0, roughness: 0.08, transparent: true, opacity: 0.84, envMapIntensity: 0.7, depthWrite: false, side: THREE.DoubleSide });
   m.BlackPlastic = new THREE.MeshStandardMaterial({ color: 0x0d0d0f, roughness: 0.55, metalness: 0.0 });
   m.Trim = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, emissive: 0x0e0e10, roughness: 0.4, metalness: 0.1 });
   m.MirrorGlass = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 0.04, metalness: 0.85, envMapIntensity: 1.0, side: THREE.DoubleSide });
@@ -23,13 +23,14 @@ function makeMaterials() {
   m.HeadLamp = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2dc, emissiveIntensity: 1.2, roughness: 0.3 });
   m.TailLamp = new THREE.MeshStandardMaterial({ color: 0x2a0000, emissive: 0xff0a05, emissiveIntensity: 0.9, roughness: 0.2 });
   m.WheelWell = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95 });
-  m.Headliner = new THREE.MeshStandardMaterial({ color: 0x9a9ba0, emissive: 0x3c3d41, roughness: 0.9, side: THREE.DoubleSide });
-  m.Interior = new THREE.MeshStandardMaterial({ color: 0x9a968e, emissive: 0x3a3833, roughness: 0.8 });
+  m.Headliner = new THREE.MeshStandardMaterial({ color: 0x3c3d41, emissive: 0x141517, roughness: 0.9, side: THREE.DoubleSide });
+  m.Interior = new THREE.MeshStandardMaterial({ color: 0x3d3a36, emissive: 0x151412, roughness: 0.8 });
   m.Seat = new THREE.MeshStandardMaterial({ color: 0x6b4a32, emissive: 0x24160c, roughness: 0.55 });
   m.Plate = new THREE.MeshStandardMaterial({ color: 0xdedbd0, roughness: 0.5 });
+  m.Amber = new THREE.MeshStandardMaterial({ color: 0x5a2200, emissive: 0xff7a10, emissiveIntensity: 0.55, roughness: 0.2 });
   m.Underbody = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95 });
   // the Blender-generated revolve/decal meshes have no guaranteed winding: render both sides (normals flip in-shader)
-  for (const k of ['Trim', 'HeadLens', 'HeadLamp', 'TailLamp', 'Plate', 'Glass', 'BlackPlastic']) m[k].side = THREE.DoubleSide;
+  for (const k of ['Trim', 'HeadLens', 'HeadLamp', 'TailLamp', 'Plate', 'Glass', 'BlackPlastic', 'Amber']) m[k].side = THREE.DoubleSide;
   if (hooks.csm) for (const k in m) hooks.csm.setupMaterial(m[k]);
   return m;
 }

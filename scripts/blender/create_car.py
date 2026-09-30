@@ -53,7 +53,7 @@ def reset():
 
 MATS = {}
 MAT_ORDER = ['CarPaint', 'Glass', 'BlackPlastic', 'Trim', 'Chrome', 'Rubber', 'RimAlloy', 'BrakeDisc', 'Caliper', 'HeadLens',
-             'HeadLamp', 'TailLamp', 'WheelWell', 'Interior', 'Headliner', 'Seat', 'Plate', 'Underbody', 'MirrorGlass']
+             'HeadLamp', 'TailLamp', 'WheelWell', 'Interior', 'Headliner', 'Seat', 'Plate', 'Underbody', 'MirrorGlass', 'Amber']
 
 def material(name, color=(0.8, 0.8, 0.8, 1), metallic=0.0, rough=0.5, coat=0.0, coat_rough=0.03, emit=None, emit_strength=0.0, alpha=1.0, ior=1.45):
     if name in MATS: return MATS[name]
@@ -91,6 +91,7 @@ def make_materials(paint=(0.42, 0.015, 0.02, 1)):
     material('Seat', (0.09, 0.07, 0.06, 1), rough=0.55)
     material('Plate', (0.85, 0.85, 0.8, 1), rough=0.4)
     material('Underbody', (0.008, 0.008, 0.009, 1), rough=0.9)
+    material('Amber', (0.9, 0.35, 0.02, 1), rough=0.15, emit=(1.0, 0.45, 0.05, 1), emit_strength=0.6)
 
 def mi(name):  # material index in the shared slot list
     return MAT_ORDER.index(name)
@@ -588,12 +589,42 @@ def build_details(body, cabin):
         # hood side lines (projected along Z)
         Z = 1.6
         curve_line('HoodLine', [(sx * 0.80, 0.9, Z), (sx * 0.80, 1.5, Z), (sx * 0.62, 2.0, Z), (sx * 0.5, 2.2, Z)], shell, axis='z', width=0.004)
+    # badges
+    objs.append(decal('BadgeF', [(0.05 * cos(a * pi / 8), 0.50 + 0.033 * sin(a * pi / 8)) for a in range(16)], 'XZ', front_y, shell, 'Chrome', offset=0.005))
+    objs.append(decal('BadgeR', [(-0.09, 0.735), (0.09, 0.735), (0.09, 0.715), (-0.09, 0.715)], 'XZ', tail_y, shell, 'Chrome', offset=0.006))
+    # bonnet vents (louvres) either side of the centre line
+    for sx in (-1, 1):
+        for k in range(6):
+            y0 = 1.32 + k * 0.07
+            objs.append(decal('HoodVent', [(sx * 0.16, y0), (sx * 0.44, y0), (sx * 0.44, y0 + 0.02), (sx * 0.16, y0 + 0.02)], 'XY', 1.6, shell, 'BlackPlastic', offset=0.002))
     curve_line('HoodCowl', [(-0.82, 0.80, 1.6), (0.0, 0.82, 1.6), (0.82, 0.80, 1.6)], shell, axis='z', width=0.004)
     curve_line('TrunkLine', [(-0.85, -1.62, 1.6), (0.0, -1.66, 1.6), (0.85, -1.62, 1.6)], shell, axis='z', width=0.004)
     # door handles
     for sx in (-1, 1):
-        hd = [(-0.62, 1.02), (-0.36, 1.02), (-0.36, 0.995), (-0.62, 0.995)]
-        objs.append(decal('Handle', hd, 'YZ', sx * 1.4, shell, 'Trim', offset=0.004))
+        hd = [(-0.66, 0.925), (-0.36, 0.925), (-0.36, 0.895), (-0.66, 0.895)]
+        objs.append(decal('HandleRecess', [(-0.70, 0.945), (-0.32, 0.945), (-0.32, 0.875), (-0.70, 0.875)], 'YZ', sx * 1.4, shell, 'BlackPlastic', offset=0.002))
+        objs.append(decal('Handle', hd, 'YZ', sx * 1.4, shell, 'Chrome', offset=0.005))
+        # chrome sill strip under the side glass + black window surround
+        curve_line('BeltChrome', [(sx * 1.4, 0.93, 0.984), (sx * 1.4, 0.55, 0.994), (sx * 1.4, -0.3, 0.998), (sx * 1.4, -1.0, 0.998)], shell, mat='Chrome', width=0.011, offset=0.004, axis='x')
+        curve_line('WindowSurround', [(sx * 1.4, 0.88, 0.99), (sx * 1.4, 0.24, 1.29), (sx * 1.4, -0.05, 1.31), (sx * 1.4, -0.62, 1.25), (sx * 1.4, -1.02, 1.09), (sx * 1.4, -1.14, 1.03)], shell, mat='BlackPlastic', width=0.012, offset=0.003, axis='x')
+        # fuel filler cap (right rear quarter only)
+        if sx > 0:
+            cap = [(-1.62 + 0.075 * cos(a * pi / 8), 0.86 + 0.075 * sin(a * pi / 8)) for a in range(16)]
+            objs.append(decal('FuelRing', cap, 'YZ', 1.4, shell, 'Chrome', offset=0.003))
+            cap2 = [(-1.62 + 0.062 * cos(a * pi / 8), 0.86 + 0.062 * sin(a * pi / 8)) for a in range(16)]
+            objs.append(decal('FuelCap', cap2, 'YZ', 1.4, shell, 'CarPaint', offset=0.0045))
+        # front fender gills
+        for k in range(4):
+            y0 = 0.80 + k * 0.045
+            gl = [(y0, 0.80), (y0 + 0.022, 0.80), (y0 + 0.062, 0.64), (y0 + 0.040, 0.64)]
+            objs.append(decal('Gill', gl, 'YZ', sx * 1.4, shell, 'BlackPlastic', offset=0.002))
+        # amber side markers
+        objs.append(decal('SideMarkerF', [(1.86, 0.585), (1.95, 0.585), (1.95, 0.555), (1.86, 0.555)], 'YZ', sx * 1.4, shell, 'Amber', offset=0.004))
+        objs.append(decal('SideMarkerR', [(-2.10, 0.665), (-2.03, 0.665), (-2.03, 0.635), (-2.10, 0.635)], 'YZ', sx * 1.4, shell, 'TailLamp', offset=0.004))
+        # side mirror base cover / door shut line highlight: door top edge chrome
+        # fog lights in the lower intakes
+        fog = [(sx * (0.62 + 0.045 * cos(a * pi / 8)), 0.365 + 0.032 * sin(a * pi / 8)) for a in range(16)]
+        objs.append(decal('Fog', fog, 'XZ', front_y, shell, 'HeadLens', offset=0.0045))
     bpy.data.objects.remove(shell, do_unlink=True)
     return objs
 
@@ -627,6 +658,26 @@ def build_mirrors():
         g.rotation_euler = (0, 0, yaw)
         for p in g.data.polygons: p.use_smooth = True
         out.append(g)
+    return out
+
+def build_spoiler():
+    """Small ducktail lip on the boot lid + a lower rear diffuser with fins."""
+    out = []
+    bm = bmesh.new()
+    box_bm(bm, (0, -2.185, 0.945), (1.46, 0.15, 0.05), taper=(0.99, 0.85))
+    o = make_obj('Ducktail', bm, mat_idx=mi('CarPaint'))
+    o.data.transform(Matrix.Translation((0, -2.185, 0.945)) @ Matrix.Rotation(math.radians(-7), 4, 'X') @ Matrix.Translation((0, 2.185, -0.945)))   # tilt about its own centre
+    activate(o)
+    b = o.modifiers.new('bev', 'BEVEL'); b.width = 0.02; b.segments = 3
+    s = o.modifiers.new('sub', 'SUBSURF'); s.levels = 1; s.render_levels = 1
+    apply_modifiers(o)
+    for p in o.data.polygons: p.use_smooth = True
+    out.append(o)
+    for k in range(-2, 3):
+        bm = bmesh.new()
+        box_bm(bm, (k * 0.16, -2.27, 0.33), (0.018, 0.09, 0.17))
+        f = make_obj('DiffuserFin', bm, mat_idx=mi('BlackPlastic'))
+        out.append(f)
     return out
 
 def build_exhaust():
@@ -674,12 +725,14 @@ def build_interior():
         # door card
         bx('DoorCard', (sx * 0.86, 0.0, 0.68), (0.06, 1.3, 0.55), 'Interior', bevel=0.02, levels=0)
     bx('RearSeat', (0, -1.2, 0.62), (1.4, 0.4, 0.3), 'Seat', bevel=0.05)
-    bx('RearShelf', (0, -1.55, 0.98), (1.3, 0.3, 0.05), 'Interior', bevel=0.02, levels=0)
+    bx('RearShelf', (0, -1.55, 0.98), (1.3, 0.3, 0.05), 'Trim', bevel=0.02, levels=0)
     # (steering wheel + instrument cluster are built at runtime in car.js so they can animate)
     return out
 
 # ----------------------------------------------------------------------------------------------
-def render_preview(out_dir, name, loc, target, lens=45, res=(960, 540), samples=40):
+def render_preview(out_dir, name, loc, target, lens=45, res=(960, 540), samples=24):
+    only = arg('--views')
+    if only and name not in only.split(','): return
     scn = bpy.context.scene
     cam = bpy.data.objects.get('PreviewCam')
     if cam is None:
@@ -892,6 +945,7 @@ def main():
     details = build_details(body, cabin)
     mirrors = build_mirrors()
     exhaust = build_exhaust()
+    spoiler = build_spoiler()
     interior = build_interior()
     wheel_root, wheel_parts = build_wheel()
     out = arg('--preview')
