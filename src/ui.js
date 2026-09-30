@@ -20,7 +20,7 @@ export function toggleFullscreen() {
 export const DEFAULTS = {
   time: 16.8, timeFlow: 'slow', weather: 'clear', season: 'summer', paint: 'red', units: 'kmh', quality: 'high',
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
-  viewDist: 1.0, grass: 1.0, showHud: true, showFps: false, shake: 1.0, mouse: 1.0,
+  viewDist: 1.0, grass: 1.0, showHud: true, showFps: false, car: 'coupe', shake: 1.0, mouse: 1.0,
   gearbox: 'auto', power: 1.0, grip: 1.0, tc: true,
   worldKind: 'mix', curvy: 1.0, hilly: 1.0, trails: true, wildlife: true, traffic: true,
 };
@@ -111,6 +111,7 @@ export class UI {
     grid.appendChild(nw);
 
     sec('Car');
+    seg('Vehicle', [['coupe', 'Sport coupe'], ['suv', 'Luxury SUV']], s.car || 'coupe', (k) => { if (k === (s.car || 'coupe')) return; s.car = k; g.saveSettings(); location.search = ''; });
     const sw = h('<div class="row"><label>Paint</label><div class="sw"></div></div>');
     const swb = sw.querySelector('.sw');
     for (const [k, hex] of Object.entries(PAINTS)) {

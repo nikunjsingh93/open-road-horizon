@@ -25,11 +25,12 @@ export class Traffic {
     const w = this.world;
     const s = carS + 620 + Math.random() * 220 + gap;
     const color = COLORS[(Math.random() * COLORS.length) | 0];
+    const laneMin = this.laneMin ?? 1.55;
     const t = this.car.spawnTraffic(color);
     for (let i = 0; i < 4; i++) t.wheels[i].pivot.position.set(this.wheelLocals[i].x, SPEC.radius, this.wheelLocals[i].z);
     this.group.add(t.root);
     const speed = 15 + Math.random() * 13;                 // m/s (54 - 100 km/h)
-    this.cars.push({ t, s, speed, dist: 0, lane: 1.55 + Math.random() * 0.35 });
+    this.cars.push({ t, s, speed, dist: 0, lane: laneMin + Math.random() * 0.35 });
     w.ensure(s + 60);
   }
 

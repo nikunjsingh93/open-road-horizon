@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { hooks, LITE } from './gfx.js';
+import { SPEC } from './vehicle.js';
 
 export const PAINTS = {
   red: 0x9c0e16, blue: 0x0b2f6b, green: 0x0f3d2a, silver: 0x9a9da3, white: 0xdedbd2, black: 0x0c0c0e, orange: 0xc4470a, yellow: 0xd2a30a,
@@ -35,7 +36,8 @@ function makeMaterials() {
   return m;
 }
 
-export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb') {
+export async function loadCar(def) {
+  const url = import.meta.env.BASE_URL + def.glb;
   const mats = makeMaterials();
   const gltf = await new GLTFLoader().loadAsync(url);
   const model = gltf.scene;
@@ -59,7 +61,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   assign(wheelTemplate, true);
 
   const wheels = [];
-  const hw = 1.58 / 2, hl = 2.74 / 2;
+  const hw = SPEC.track / 2, hl = SPEC.wheelbase / 2;
   const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]]; // FL FR RL RR: [side, front(-z)/rear(+z)]
   for (let i = 0; i < 4; i++) {
     const pivot = new THREE.Group();
@@ -75,8 +77,8 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const spots = [];
   for (const sx of [-1, 1]) {
     const s = new THREE.SpotLight(0xfff0d8, 0, 240, 0.6, 0.75, 1.2);
-    s.position.set(sx * 0.65, 0.7, -2.1);
-    s.target.position.set(sx * 0.65, 0.0, -30);
+    s.position.set(sx * def.lamps.pos[0], def.lamps.pos[1], def.lamps.pos[2]);
+    s.target.position.set(sx * def.lamps.pos[0], 0.0, def.lamps.z);
     s.castShadow = false;
     root.add(s, s.target);
     spots.push(s);
@@ -84,7 +86,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
 
   // ---- driver's steering wheel + instrument cluster (animated at runtime) ----
   const cab = new THREE.Group();
-  cab.position.set(-0.36, 0.895, -0.34);
+  cab.position.set(...def.cab.wheel);
   cab.rotation.x = 0.0;
   const leather = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.62, metalness: 0.0 });
   const metal = new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.35, metalness: 0.9 });
@@ -127,8 +129,8 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   const clusterMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
   const cluster = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.157), clusterMat);
-  cluster.position.set(-0.36, 0.962, -0.64);
-  cluster.rotation.x = -0.32;
+  cluster.position.set(...def.cab.cluster);
+  cluster.rotation.x = def.cab.clusterRot;
   const hood = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.03, 0.10), leather);
   hood.position.set(-0.36, 1.049, -0.70); hood.rotation.x = 0.0;
   const cabin = new THREE.Group(); cabin.add(cab, cluster);
@@ -234,7 +236,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
         s.penumbra = mode === 1 ? 0.85 : 0.6;
         s.distance = mode === 1 ? 70 : 150;
         s.target.position.y = mode === 1 ? -0.9 : 0.5;      // low beams dip towards the road
-        s.target.position.z = -30;
+        s.target.position.z = def.lamps.z;
       }
     },
     beam: 0,

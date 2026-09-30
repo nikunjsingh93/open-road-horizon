@@ -37,6 +37,11 @@ export class World {
     this.curvy = opts.curvy ?? 1;
     this.hilly = opts.hilly ?? 1;
     this.trailsOn = opts.trails !== false;
+    // the game starts startS metres along the road, so there is plenty of road behind the car too (you can turn round and drive back).
+    // The style zones are counted from the start point: the stretch behind it is plain meadows, the world ahead is unchanged.
+    this.startS = opts.startS ?? 6000;
+    this.iStart = Math.round(this.startS / DS);
+    this.zoneOff = 1e9;
     this.trails = []; this.thash = new Map(); this.nextTrail = 0; this.tdist = 99; this._tq = { d: 99, y: 0 };
     this.noise = new Noise(seed);
     this.noise2 = new Noise(seed * 31 + 5);
@@ -50,7 +55,7 @@ export class World {
     this.raw[0] = Math.max(this.natural(0, 0), this.waterY + 2.4);
     this._insertHash(0);
     this.gen = 1;
-    this.ensure(1200);
+    this.ensure(this.startS + 1200);
   }
 
   // ---- style zones ----
@@ -76,7 +81,7 @@ export class World {
       o.wc = this.P.guide === 'coast' ? 1 : 0; o.wm = this.P.guide === 'mountain' ? 1 : 0; o.P = this.P;
       return o;
     }
-    const p = Math.max(0, -z / ZONE_LEN), b = Math.round(p);
+    const p = Math.max(0, (-z - this.zoneOff) / ZONE_LEN), b = Math.round(p);
     const A = STYLES[this._zoneType(b - 1)], B = STYLES[this._zoneType(b)];
     const tA = this._zoneType(b - 1), tB = this._zoneType(b);
     const halfw = (A.guide || B.guide) ? 0.34 : 0.15;
@@ -208,6 +213,7 @@ export class World {
     while (this.gen < need) {
       const i = this.gen;
       const s = i * DS;
+      if (i === this.iStart && this.zoneOff > 1e8) this.zoneOff = -this.zs[i - 1];   // zones start here
       let th = this.th[i - 1];
       const x = this.xs[i - 1], z = this.zs[i - 1];
       // the road starts hugging the guide curve ~1.5 km before a coast / mountain zone begins (so it is already in place)

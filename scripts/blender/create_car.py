@@ -210,7 +210,7 @@ def build_body():
 # Greenhouse ---------------------------------------------------------------------------------
 ROOF = [(-1.70, 0.990), (-1.45, 1.045), (-1.1, 1.150), (-0.7, 1.262), (-0.35, 1.315), (0.0, 1.327), (0.22, 1.31), (0.47, 1.225), (0.72, 1.105), (0.98, 0.985)]
 WB = [(-1.7, 0.66), (-1.4, 0.82), (-0.9, 0.87), (-0.2, 0.875), (0.4, 0.865), (0.8, 0.83), (1.0, 0.72)]
-WT = [(-1.7, 0.50), (-1.4, 0.58), (-0.9, 0.62), (-0.2, 0.655), (0.3, 0.655), (0.7, 0.60), (1.0, 0.52)]
+WT = [(-1.7, 0.56), (-1.4, 0.645), (-0.9, 0.69), (-0.2, 0.725), (0.3, 0.725), (0.7, 0.665), (1.0, 0.57)]
 BELT = [(-1.7, 0.99), (-1.2, 0.985), (-0.5, 0.965), (0.3, 0.945), (1.0, 0.92)]
 
 def cabin_half(y):
@@ -276,7 +276,7 @@ def cabin_glass(obj):
         elif n.y > 0.32 and n.z > 0.25:                     # windshield
             g = abs(c.x) < interp(WT, c.y) - 0.055 and c.z > interp(BELT, c.y) + 0.02
         elif n.y < -0.28 and n.z > 0.2:                     # rear window
-            g = abs(c.x) < interp(WT, c.y) - 0.07 and c.z > interp(BELT, c.y) + 0.02
+            g = abs(c.x) < interp(WT, c.y) - 0.07 and c.z > interp(BELT, c.y) + 0.02 and c.y > -1.47      # the glass ends where it clearly rises out of the boot lid
         if g:
             f.material_index = mi('Glass'); glass.append(f)
     if glass:
@@ -287,7 +287,8 @@ def body_pass(obj):
     """Wheel wells, arches, underbody & plastic lower trim by classification."""
     # open the cabin: remove the deck surface that sits under the greenhouse so the interior is visible/usable
     bm = mesh_bm(obj); bm.faces.ensure_lookup_table()
-    dead = [f for f in bm.faces if abs(face_center(f).x) < 0.80 and -1.58 < face_center(f).y < 0.90 and face_center(f).z > 0.86 and f.normal.z > 0.2]
+    # the deck opening stays inside the cabin footprint and starts where the rear glass rises out of the boot lid, so no rim or interior is ever visible from outside
+    dead = [f for f in bm.faces if abs(face_center(f).x) < interp(WB, face_center(f).y) - 0.05 and -1.30 < face_center(f).y < 0.90 and face_center(f).z > 0.86 and f.normal.z > 0.2]
     bmesh.ops.delete(bm, geom=dead, context='FACES')
     bm.to_mesh(obj.data); bm.free()
     # arch cutters ------------------------------------------------------------------
@@ -390,7 +391,8 @@ def build_wheel():
     parts.append(barrel)
     # ---- rim face: dished disc + 10 twin-ish spokes ----
     bm = bmesh.new()
-    n_sp = 10
+    n_sp = globals().get('SPOKES', 10)
+    SW = globals().get('SPOKE_W', 1.0)
     for k in range(n_sp):
         a = 2 * pi * k / n_sp
         rot = Matrix.Rotation(a, 3, 'X')
@@ -401,7 +403,7 @@ def build_wheel():
             t = si / segs
             r = 0.05 + t * (0.212 - 0.05)
             xo = 0.105 - 0.045 * (1 - t) ** 1.5 - 0.02 * t          # axial position (dish)
-            wdt = 0.036 + 0.030 * t                                 # tangential width
+            wdt = (0.036 + 0.030 * t) * SW                          # tangential width
             thk = 0.020 - 0.006 * t
             # two verts pairs (front/back) each side
             pts = []
@@ -606,18 +608,12 @@ def build_details(body, cabin):
         objs.append(decal('Handle', hd, 'YZ', sx * 1.4, shell, 'Chrome', offset=0.005))
         # chrome sill strip under the side glass + black window surround
         curve_line('BeltChrome', [(sx * 1.4, 0.93, 0.984), (sx * 1.4, 0.55, 0.994), (sx * 1.4, -0.3, 0.998), (sx * 1.4, -1.0, 0.998)], shell, mat='Chrome', width=0.011, offset=0.004, axis='x')
-        curve_line('WindowSurround', [(sx * 1.4, 0.88, 0.99), (sx * 1.4, 0.24, 1.29), (sx * 1.4, -0.05, 1.31), (sx * 1.4, -0.62, 1.25), (sx * 1.4, -1.02, 1.09), (sx * 1.4, -1.14, 1.03)], shell, mat='BlackPlastic', width=0.012, offset=0.003, axis='x')
         # fuel filler cap (right rear quarter only)
         if sx > 0:
             cap = [(-1.62 + 0.075 * cos(a * pi / 8), 0.86 + 0.075 * sin(a * pi / 8)) for a in range(16)]
             objs.append(decal('FuelRing', cap, 'YZ', 1.4, shell, 'Chrome', offset=0.003))
             cap2 = [(-1.62 + 0.062 * cos(a * pi / 8), 0.86 + 0.062 * sin(a * pi / 8)) for a in range(16)]
             objs.append(decal('FuelCap', cap2, 'YZ', 1.4, shell, 'CarPaint', offset=0.0045))
-        # front fender gills
-        for k in range(4):
-            y0 = 0.80 + k * 0.045
-            gl = [(y0, 0.80), (y0 + 0.022, 0.80), (y0 + 0.062, 0.64), (y0 + 0.040, 0.64)]
-            objs.append(decal('Gill', gl, 'YZ', sx * 1.4, shell, 'BlackPlastic', offset=0.002))
         # amber side markers
         objs.append(decal('SideMarkerF', [(1.86, 0.585), (1.95, 0.585), (1.95, 0.555), (1.86, 0.555)], 'YZ', sx * 1.4, shell, 'Amber', offset=0.004))
         objs.append(decal('SideMarkerR', [(-2.10, 0.665), (-2.03, 0.665), (-2.03, 0.635), (-2.10, 0.635)], 'YZ', sx * 1.4, shell, 'TailLamp', offset=0.004))
@@ -661,18 +657,8 @@ def build_mirrors():
     return out
 
 def build_spoiler():
-    """Small ducktail lip on the boot lid + a lower rear diffuser with fins."""
+    """Rear diffuser fins."""
     out = []
-    bm = bmesh.new()
-    box_bm(bm, (0, -2.185, 0.945), (1.46, 0.15, 0.05), taper=(0.99, 0.85))
-    o = make_obj('Ducktail', bm, mat_idx=mi('CarPaint'))
-    o.data.transform(Matrix.Translation((0, -2.185, 0.945)) @ Matrix.Rotation(math.radians(-7), 4, 'X') @ Matrix.Translation((0, 2.185, -0.945)))   # tilt about its own centre
-    activate(o)
-    b = o.modifiers.new('bev', 'BEVEL'); b.width = 0.02; b.segments = 3
-    s = o.modifiers.new('sub', 'SUBSURF'); s.levels = 1; s.render_levels = 1
-    apply_modifiers(o)
-    for p in o.data.polygons: p.use_smooth = True
-    out.append(o)
     for k in range(-2, 3):
         bm = bmesh.new()
         box_bm(bm, (k * 0.16, -2.27, 0.33), (0.018, 0.09, 0.17))
@@ -730,7 +716,7 @@ def build_interior():
     return out
 
 # ----------------------------------------------------------------------------------------------
-def render_preview(out_dir, name, loc, target, lens=45, res=(960, 540), samples=24):
+def render_preview(out_dir, name, loc, target, lens=45, res=(960, 540), samples=int(arg('--samples', 32))):
     only = arg('--views')
     if only and name not in only.split(','): return
     scn = bpy.context.scene
@@ -841,6 +827,8 @@ def build_headliner(cabin):
     front_roof = [f for f in bm.faces if face_center(f).y > 0.07 and face_center(f).z > 1.02]
     bmesh.ops.delete(bm, geom=front_roof, context='FACES')   # front roof panel: the driver looks out through here
     bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if face_center(f).y < -1.26], context='FACES')   # nothing of the lining may show above the boot lid behind the rear glass
+    bm.faces.ensure_lookup_table()
     smooth_boundary(bm, 260)
     c = Vector((0, -0.35, 1.08))
     for v in bm.verts:
@@ -862,7 +850,7 @@ def build_roof_lining():
         yf = 0.095 - 0.05 * u * u                                   # arched leading edge
         col = []
         for i in range(ny + 1):
-            y = -1.62 + (yf + 1.62) * (i / ny)
+            y = -1.26 + (yf + 1.26) * (i / ny)
             zt = interp(ROOF, y); w = interp(WT, y) + 0.03
             col.append(bm.verts.new((u * w, y, zt - 0.048 - 0.05 * u * u - 0.05 * u ** 6)))
         cols.append(col)
@@ -945,7 +933,6 @@ def main():
     details = build_details(body, cabin)
     mirrors = build_mirrors()
     exhaust = build_exhaust()
-    spoiler = build_spoiler()
     interior = build_interior()
     wheel_root, wheel_parts = build_wheel()
     out = arg('--preview')
@@ -954,13 +941,19 @@ def main():
         os.makedirs(out, exist_ok=True)
         place_wheels_preview(wheel_root, wheel_parts)
         setup_studio()
+        for hn in (arg('--hide') or '').split(','):
+            for o in bpy.data.objects:
+                if hn and o.name.startswith(hn): o.hide_render = True
         render_preview(out, 'side', (9.0, 0.0, 1.0), (0, 0, 0.65), lens=50)
         render_preview(out, 'rear34', (-5.2, -5.6, 2.0), (0, 0, 0.7), lens=42)
         render_preview(out, 'front34', (5.2, 5.6, 1.7), (0, 0, 0.65), lens=42)
         render_preview(out, 'chase', (0.0, -6.6, 2.2), (0, 0, 0.9), lens=50)
         render_preview(out, 'top', (0.0, -0.01, 9), (0, 0, 0.9), lens=40)
+        render_preview(out, 'rearTop', (1.6, -4.2, 3.6), (0, -1.5, 0.95), lens=55)
+        render_preview(out, 'sideTop', (4.2, -1.0, 3.4), (0, -0.8, 0.9), lens=55)
         render_preview(out, 'wheel', (2.6, 1.9, 0.6), (0.8, 1.37, 0.33), lens=60)
     if glb:
         export_glb(glb)
 
-main()
+if __name__ == '__main__':
+    main()

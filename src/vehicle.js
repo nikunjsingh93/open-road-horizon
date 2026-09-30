@@ -29,6 +29,13 @@ export const SPEC = {
   maxTorque: 360, idle: 850, redline: 6800,
   brakeTorque: 3000, brakeBias: 0.66,
   cdA: 0.62, rollRes: 0.011,
+  drive: [0, 0, 0.5, 0.5],             // share of the engine torque per wheel (FL FR RL RR): rear wheel drive
+  gripK: 1, assistK: 1,                // tyre grip multiplier, stability-assist strength (scales with the car's inertia)
+  collOff: [-1.45, 0, 1.45], collR: 0.95,   // tree-collision circles along the body
+  hull: [                               // rigid chassis points (body space, relative to the centre of mass)
+    [-0.78, -0.30, -1.4], [0.78, -0.30, -1.4], [-0.78, -0.30, 1.4], [0.78, -0.30, 1.4], [0, -0.30, 0],
+    [-0.7, 0.42, -0.5], [0.7, 0.42, -0.5], [-0.7, 0.42, 0.9], [0.7, 0.42, 0.9], [0, 0.45, 0.2],
+  ],
 };
 
 function tireCurve(s) {
@@ -47,10 +54,10 @@ export class Vehicle {
     const ay = -0.06;
     // order: FL, FR, RL, RR  (forward is -Z in body space)
     this.wheels = [
-      this._wheel(-hw, ay, -hl, true, false, SPEC.kF, SPEC.arbF),
-      this._wheel(+hw, ay, -hl, true, false, SPEC.kF, SPEC.arbF),
-      this._wheel(-hw, ay, +hl, false, true, SPEC.kR, SPEC.arbR),
-      this._wheel(+hw, ay, +hl, false, true, SPEC.kR, SPEC.arbR),
+      this._wheel(-hw, ay, -hl, true, SPEC.drive[0], SPEC.kF, SPEC.arbF),
+      this._wheel(+hw, ay, -hl, true, SPEC.drive[1], SPEC.kF, SPEC.arbF),
+      this._wheel(-hw, ay, +hl, false, SPEC.drive[2], SPEC.kR, SPEC.arbR),
+      this._wheel(+hw, ay, +hl, false, SPEC.drive[3], SPEC.kR, SPEC.arbR),
     ];
     this.hint = 4;
     this.ri = { s: 0, t: 0, y: 0, d: 0, i: 0, u: 0, th: 0, px: 0, pz: 0 };
@@ -73,7 +80,7 @@ export class Vehicle {
 
   _wheel(x, y, z, steer, drive, k, arb) {
     return {
-      local: new V3(x, y, z), steer, drive, k, arb,
+      local: new V3(x, y, z), steer, drive, rear: z > 0, k, arb,
       comp: 0, prevComp: 0, contact: false, omega: 0, spin: 0, steerA: 0,
       hub: new V3(), normal: new V3(0, 1, 0), fz: 0, fx: 0, fy: 0, slipRatio: 0, slipAngle: 0, surf: 0,
     };
@@ -235,7 +242,7 @@ export class Vehicle {
       if (!contact) {
         wh.comp = 0; wh.fz = 0;
         wh.hub.copy(org).addScaledVector(up, -(S.rayLen - S.radius));
-        wh.omega += dt * (wh.drive ? drivenTorque / 2 : 0) / S.wheelInertia;
+        wh.omega += dt * drivenTorque * wh.drive / S.wheelInertia;
         wh.omega = clamp(wh.omega * (1 - dt * (this.throttle > 0.05 ? 0.25 : 2.2)), -420, 420);
         continue;
       }
@@ -269,17 +276,17 @@ export class Vehicle {
       vc.copy(this.omega).cross(r).add(this.vel);
       const vx = vc.dot(wf), vy = vc.dot(wl);
       const mu0 = (wh.surf === 0 ? 1.42 : wh.surf === 1 ? 0.95 : 0.88) * (1 - 0.5 * this.snow) * (1 - 0.22 * this.wet);
-      const mu = mu0 * (1 - 0.07 * (f / 3400 - 1)) * this.tune.grip * (wh.drive ? 1.06 : 1.0);   // a touch more rear grip = less power-on oversteer
+      const mu = mu0 * (1 - 0.07 * (f / (S.mass * 2.45) - 1)) * this.tune.grip * S.gripK * (wh.rear ? 1.06 : 1.0);   // a touch more rear grip = less power-on oversteer
       const Fz = f;
       const vref = Math.max(Math.abs(vx), 1.6);
       const R = S.radius, I = S.wheelInertia;
 
       let brakeT = this.brake * S.brakeTorque * (wh.steer ? S.brakeBias : 1 - S.brakeBias) * 0.5;
-      if (this.handbrake > 0 && wh.drive) brakeT = Math.max(brakeT, this.handbrake * 2400);
+      if (this.handbrake > 0 && wh.rear) brakeT = Math.max(brakeT, this.handbrake * 2400 * S.mass / 1380);
       // auto-hold: with no pedal input the car stays put instead of rolling away on slopes (or creeping in reverse)
       const holdT = holdK * 900;
       brakeT = Math.max(brakeT, holdT);
-      let Td = wh.drive ? drivenTorque / 2 : 0;
+      let Td = drivenTorque * wh.drive;
       if (this.tcOn && Td > 0) {
         // traction control: never ask a tyre for more drive force than its friction circle can give after cornering load
         const cap = Math.max(0.22 * mu * Fz, Math.sqrt(Math.max(0, Math.pow(0.97 * mu * Fz, 2) - wh.fy * wh.fy))) * R;
@@ -330,7 +337,7 @@ export class Vehicle {
       const yaw = this.omega.dot(up);
       const want = this.fwdSpeed * Math.tan(this.steerAngle) / S.wheelbase * 0.92;
       const err = yaw - want;
-      const tq = clamp(-err * 2600 * this.assist, -1800, 1800);
+      const tq = clamp(-err * 2600 * this.assist * S.assistK, -1800 * S.assistK, 1800 * S.assistK);
       torque.addScaledVector(up, tq);
     }
     // integrate linear
@@ -359,10 +366,7 @@ export class Vehicle {
   // Rigid chassis-vs-terrain contact. The wheel rays only reach 0.6 m, so after a big drop (or in a tumble) the body could sink
   // through the ground; these hull points guarantee it never does and give a natural thump / roll instead.
   _bodyCollide(dt) {
-    const H = this._hull || (this._hull = [
-      [-0.78, -0.30, -1.4], [0.78, -0.30, -1.4], [-0.78, -0.30, 1.4], [0.78, -0.30, 1.4], [0, -0.30, 0],
-      [-0.7, 0.42, -0.5], [0.7, 0.42, -0.5], [-0.7, 0.42, 0.9], [0.7, 0.42, 0.9], [0, 0.45, 0.2],
-    ].map(a => new V3(...a)));
+    const H = this._hull || (this._hull = SPEC.hull.map(a => new V3(...a)));
     const p = this._hp || (this._hp = new V3()), rr = this._hr || (this._hr = new V3()), n = this._hn || (this._hn = new V3()), t1 = this._ht || (this._ht = new V3()), rxn = this._hx || (this._hx = new V3());
     // fail-safe against tunnelling at extreme speeds
     const g0 = this.ground(this.pos.x, this.pos.z, this.gh);
@@ -428,8 +432,9 @@ export class Vehicle {
     const S = SPEC;
     if (this.manual || this.gear < 1 || this.shiftTimer > 0) return;
     const rearOmega = Math.abs(this.fwdSpeed) / S.radius;
-    const upRpm = 3300 + 3000 * this.throttle * this.throttle;
-    const downRpm = 1350 + 900 * this.throttle;
+    const rk = S.redline / 6800;
+    const upRpm = (3300 + 3000 * this.throttle * this.throttle) * rk;
+    const downRpm = (1350 + 900 * this.throttle) * rk;
     const rpmIn = g => rearOmega * 60 / (2 * Math.PI) * S.gears[g - 1] * S.finalDrive;
     if (this.gear < 6 && rpmIn(this.gear) > upRpm) { this.gear++; this.shiftTimer = 0.25; }
     else if (this.gear > 1 && rpmIn(this.gear) < downRpm && rpmIn(this.gear - 1) < upRpm - 700) { this.gear--; this.shiftTimer = 0.2; }
@@ -456,7 +461,7 @@ export class Autopilot {
     const lon = (dx * v.fwd.x + dz * v.fwd.z) / fl;
     const lat = (dx * v.right.x + dz * v.right.z) / rl;
     const ang = Math.atan2(lat, Math.max(lon, 0.5));
-    const delta = Math.atan2(2 * 2.74 * Math.sin(ang), Math.hypot(lat, lon));
+    const delta = Math.atan2(2 * SPEC.wheelbase * Math.sin(ang), Math.hypot(lat, lon));
     const steer = clamp(delta / v.maxSteer(speed), -1, 1);
     this.steer += (steer - this.steer) * clamp(dt * 8, 0, 1);
     const fric = (1 - 0.5 * (v.snow || 0)) * (1 - 0.22 * (v.wet || 0));

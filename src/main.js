@@ -13,6 +13,7 @@ import { Vehicle, Autopilot, SPEC } from './vehicle.js';
 import { TreeScatter } from './scatter.js';
 import { GroundCover } from './cover.js';
 import { loadCar, PAINTS } from './car.js';
+import { selectCar } from './cars.js';
 import { Weather } from './weather.js';
 import { Roadside } from './roadside.js';
 import { AudioEngine } from './audio.js';
@@ -48,6 +49,8 @@ class Game {
     this.settings = loadSettings();
     const S = this.settings;
     if (params.get('q')) S.quality = params.get('q');
+    if (params.get('car')) S.car = params.get('car');
+    this.carDef = selectCar(S.car);             // the active car's physics numbers go into SPEC before anything reads them
     if (params.get('t')) S.time = parseFloat(params.get('t'));
     if (params.get('weather')) S.weather = params.get('weather');
     if (params.get('cam')) S.camera = params.get('cam');
@@ -82,7 +85,7 @@ class Game {
     // --- world & sky ---
     status('Generating world', 10); await tick();
     this.world = new World(this.seed, { style: S.worldKind, curvy: S.curvy, hilly: S.hilly, trails: S.trails });
-    this.world.ensure(9500);
+    this.world.ensure(this.world.startS + 9500);
     this.sky = new Sky(scene);
     this.pmrem = new THREE.PMREMGenerator(renderer);
     this.hour = S.time;
@@ -129,10 +132,10 @@ class Game {
     // --- vehicle ---
     status('Building the car', 56); await tick();
     this.vehicle = new Vehicle(this.world);
-    this.vehicle.place(20, 1.7, params.get('v') ? parseFloat(params.get('v')) / 3.6 : 0);
+    this.vehicle.place(this.world.startS + 20, 1.7, params.get('v') ? parseFloat(params.get('v')) / 3.6 : 0);
     this.autopilot = new Autopilot(this.world, this.vehicle);
     this.auto = params.get('auto') === '1';
-    this.car = await loadCar();
+    this.car = await loadCar(this.carDef);
     if (PAINTS[S.paint]) this.car.setPaint(PAINTS[S.paint]);
     this.carRoot = new THREE.Group();
     this.carRoot.add(this.car.root);
@@ -144,11 +147,12 @@ class Game {
       const gr = x.createRadialGradient(32, 32, 4, 32, 32, 31); gr.addColorStop(0, 'rgba(0,0,0,0.62)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.32)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
       const t = new THREE.CanvasTexture(c);
-      this.blob = new THREE.Mesh(new THREE.PlaneGeometry(2.7, 5.4), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false }));
+      this.blob = new THREE.Mesh(new THREE.PlaneGeometry(this.carDef.blob[0], this.carDef.blob[1]), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4, toneMapped: false }));
       this.blob.rotation.x = -Math.PI / 2; this.blob.renderOrder = 3; this.blob.frustumCulled = false; this.blob.visible = false;
       this.blobHolder = new THREE.Group(); this.blobHolder.add(this.blob); scene.add(this.blobHolder);
     }
     this.traffic = new Traffic(scene, this.world, this.car, this.vehicle.wheels.map(w => ({ x: w.local.x, z: w.local.z })));
+    this.traffic.laneMin = this.carDef.lane;
     this.traffic.setEnabled(S.traffic !== false && QP.traffic !== false);
 
     // --- effects ---
@@ -392,7 +396,12 @@ class Game {
       v.placeAt(x, w.heightRI(x, z), z, dx, dz, Math.max(v.fwdSpeed, 0));
       v.hint = Math.max(1, Math.round(v.ri.s / 2));
     } else {
-      v.place(v.s, v.t < 0 ? -1.7 : 1.7, Math.max(v.fwdSpeed, 0));
+      // always back onto the right-hand lane (right of the yellow line) for the direction the car is facing
+      const c = w.at(v.s, this._rc || (this._rc = {}));
+      const sn = Math.sin(c.th), cs = Math.cos(c.th);
+      if (v.fwd.x * sn - v.fwd.z * cs >= 0) v.place(v.s, 1.7, Math.max(v.fwdSpeed, 0));
+      else v.placeAt(c.x - cs * 1.7, c.y, c.z - sn * 1.7, -sn, cs, Math.max(v.fwdSpeed, 0));   // facing back along the road: its right is the other side
+      v.hint = Math.round(v.s / 2);
     }
     this.skids.reset();
     this.camDir.set(v.fwd.x, 0, v.fwd.z).normalize();
@@ -456,9 +465,9 @@ class Game {
     if (!this.trees) return;
     const v = this.vehicle, hit = this._hit || (this._hit = { nx: 0, nz: 0, pen: 0 });
     let worst = 0;
-    for (const off of [-1.45, 0, 1.45]) {
+    for (const off of SPEC.collOff) {
       const cx = v.pos.x + v.fwd.x * off, cz = v.pos.z + v.fwd.z * off;
-      if (!this.trees.collide(cx, cz, 0.95, hit) && !(this.wildlife && this.wildlife.enabled && this.wildlife.collide(cx, cz, 0.95, hit))) continue;
+      if (!this.trees.collide(cx, cz, SPEC.collR, hit) && !(this.wildlife && this.wildlife.enabled && this.wildlife.collide(cx, cz, SPEC.collR, hit))) continue;
       v.pos.x += hit.nx * hit.pen; v.pos.z += hit.nz * hit.pen;
       const vn = v.vel.x * hit.nx + v.vel.z * hit.nz;
       if (vn < 0) {
@@ -532,7 +541,7 @@ class Game {
       let rate = 0, r = 0.7, g = 0.7, b = 0.7, a = 0.3, size = 0.5, up = 0.5;
       if (wh.surf === 0) {
         if (slip > 0.55) { rate = (slip - 0.4) * 60; r = g = b = 0.85; a = 0.28; size = 0.7; }
-        if (wet > 0.3 && spd > 14 && wh.drive) { rate = Math.max(rate, spd * 0.9 * wet); r = g = b = 0.8; a = 0.16 * wet; size = 0.9; up = 0.9; }
+        if (wet > 0.3 && spd > 14 && wh.rear) { rate = Math.max(rate, spd * 0.9 * wet); r = g = b = 0.8; a = 0.16 * wet; size = 0.9; up = 0.9; }
       } else {
         rate = (0.4 + slip * 3) * spd * 0.9 * (wh.surf === 2 ? 0.7 : 1);
         if (wet > 0.4) { r = 0.32; g = 0.27; b = 0.2; a = 0.18; } else if (wh.surf === 2) { r = 0.42; g = 0.4; b = 0.28; a = 0.16; } else { r = 0.66; g = 0.58; b = 0.46; a = 0.3; }
@@ -576,7 +585,8 @@ class Game {
     const sx = (Math.sin(this.shakeT * 31.1) + Math.sin(this.shakeT * 17.3 + 1.3)) * 0.5 * shake, sy = (Math.sin(this.shakeT * 27.7 + 2.1) + Math.sin(this.shakeT * 13.1)) * 0.5 * shake;
     if (m === 'chase' || m === 'far' || m === 'top') {
       const rally = m === 'top';
-      const dist = m === 'far' ? 10.5 : rally ? 20 : 6.4, height = m === 'far' ? 3.6 : rally ? 12 : 1.95;
+      const CM = this.carDef.cam, big = SPEC.wheelbase / 2.74;
+      const dist = m === 'far' ? CM.far[0] : rally ? 20 * big : CM.chase[0], height = m === 'far' ? CM.far[1] : rally ? 12 * big : CM.chase[1];
       if (rally) fov = this.settings.fov * 0.9 + Math.min(sp * 0.05, 4);   // narrow lens: the flattened, top-down 'rally game' look
       // mouse orbit: view yaw swings the camera around the car, view pitch (up) lowers it
       const L = this.look, ya = L.yaw, el = -clamp(L.pitch, -1.05, 0.3);
@@ -584,7 +594,7 @@ class Game {
       pos = carPos.clone().addScaledVector(dirL, -dist * Math.cos(el));
 
       pos.y = carPos.y - SPEC.comH + height + dist * Math.sin(el);
-      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.0 : 1.3);
+      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.0 : CM.lookH);
       if (rally) look.addScaledVector(this.camDir, 6 + Math.min(sp * 0.18, 8));   // look well ahead: the car sits in the lower third with the road ahead of it
       const gy = this.world.height(pos.x, pos.z) + 0.6;
       if (pos.y < gy) pos.y = gy;
@@ -600,7 +610,7 @@ class Game {
       cam.lookAt(this.camLook);
       cam.rotateZ(sx * 0.0016 * (rally ? 0.4 : 1)); cam.rotateX(sy * 0.0012 * (rally ? 0.4 : 1));
     } else {
-      const off = m === 'hood' ? new THREE.Vector3(0, 1.08, -1.05) : new THREE.Vector3(-0.36, 1.14, 0.09);
+      const off = new THREE.Vector3(...(m === 'hood' ? this.carDef.eye.hood : this.carDef.eye.cockpit));
       const q = v.quat;
       const p = off.applyQuaternion(q).add(new THREE.Vector3(carPos.x, carPos.y - SPEC.comH, carPos.z));
       cam.position.copy(p);
