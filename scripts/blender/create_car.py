@@ -785,7 +785,7 @@ def build_headliner(cabin):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index == mi('Glass')], context='FACES')   # keep the windows open
     bm.faces.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if face_center(f).z < 0.93 and abs(f.normal.z) > 0.85], context='FACES')   # drop the flat cabin bottom (it would be a table at waist height)
-    front_roof = [f for f in bm.faces if face_center(f).y > 0.12 and face_center(f).z > 1.10 and abs(face_center(f).x) < 0.62]
+    front_roof = [f for f in bm.faces if face_center(f).y > 0.30 and face_center(f).z > 1.02]
     bmesh.ops.delete(bm, geom=front_roof, context='FACES')   # front roof panel: the driver looks out through here
     bm.faces.ensure_lookup_table()
     smooth_boundary(bm, 260)
@@ -800,23 +800,59 @@ def build_headliner(cabin):
     return d
 
 def build_roof_lining():
-    """Solid ceiling over the cabin (the cabin shell alone leaves the roof open when seen from inside)."""
+    """Solid ceiling over the cabin with a clean, gently arched front header (the cabin shell alone leaves the roof open from inside)."""
     bm = bmesh.new()
-    ys = [-1.62 + (0.10 + 1.62) * (i / 48) for i in range(49)]
-    nx = 20
-    rows = []
-    for y in ys:
-        zt = interp(ROOF, y); w = interp(WT, y) + 0.03
-        row = []
-        for j in range(nx + 1):
-            u = -1 + 2 * j / nx
-            row.append(bm.verts.new((u * w, y, zt - 0.048 - 0.05 * u * u - 0.05 * u ** 6)))
-        rows.append(row)
-    for i in range(len(ys) - 1):
-        for j in range(nx):
-            f = bm.faces.new((rows[i + 1][j], rows[i + 1][j + 1], rows[i][j + 1], rows[i][j]))
+    nx, ny = 28, 64
+    cols = []
+    for j in range(nx + 1):
+        u = -1 + 2 * j / nx
+        yf = 0.36 - 0.11 * u * u                                   # arched leading edge
+        col = []
+        for i in range(ny + 1):
+            y = -1.62 + (yf + 1.62) * (i / ny)
+            zt = interp(ROOF, y); w = interp(WT, y) + 0.03
+            col.append(bm.verts.new((u * w, y, zt - 0.048 - 0.05 * u * u - 0.05 * u ** 6)))
+        cols.append(col)
+    for j in range(nx):
+        for i in range(ny):
+            f = bm.faces.new((cols[j][i + 1], cols[j + 1][i + 1], cols[j + 1][i], cols[j][i]))
             f.material_index = mi('Headliner'); f.smooth = True
     return make_obj('HeadlinerRoof', bm, mat_idx=mi('Headliner'))
+
+def build_pillars():
+    """Clean A-pillar trims (the cabin shell's own pillars come out jagged where the windshield glass was cut away)."""
+    out = []
+    for sx in (-1, 1):
+        path = [Vector((sx * 0.655, 0.10, 1.185)), Vector((sx * 0.672, 0.23, 1.150)), Vector((sx * 0.690, 0.50, 1.090)), Vector((sx * 0.715, 0.76, 1.030)), Vector((sx * 0.735, 0.975, 0.985))]
+        # smooth the polyline into a dense curve
+        pts = []
+        for k in range(len(path) - 1):
+            for t in range(12):
+                pts.append(path[k].lerp(path[k + 1], t / 12))
+        pts.append(path[-1])
+        bm = bmesh.new()
+        seg = 12
+        rings = []
+        for idx, p in enumerate(pts):
+            tng = (pts[min(idx + 1, len(pts) - 1)] - pts[max(idx - 1, 0)]).normalized()
+            aa = tng.cross(Vector((0, 0, 1))).normalized()
+            bb = aa.cross(tng).normalized()
+            if bb.z < 0: bb = -bb
+            ring = []
+            k = min(1.0, 0.35 + idx / 10.0) * min(1.0, 0.5 + (len(pts) - 1 - idx) / 6.0)   # tuck the ends into the roof / dash
+            for s_ in range(seg):
+                ang = 2 * math.pi * s_ / seg
+                ring.append(bm.verts.new(p + aa * (0.034 * k * math.cos(ang)) + bb * (0.022 * k * math.sin(ang))))
+            rings.append(ring)
+        for i in range(len(rings) - 1):
+            for s_ in range(seg):
+                f = bm.faces.new((rings[i][s_], rings[i][(s_ + 1) % seg], rings[i + 1][(s_ + 1) % seg], rings[i + 1][s_]))
+                f.material_index = mi('Trim'); f.smooth = True
+        for cap in (rings[0], list(reversed(rings[-1]))):
+            f = bm.faces.new(cap); f.material_index = mi('Trim')
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        out.append(make_obj('HeadlinerPillar', bm, mat_idx=mi('Trim')))
+    return out
 
 def build_liners(body):
     """Inner side walls of the cabin (reversed copy of the body sides, pushed inwards) so the doors/sills are not see-through from the driver's seat."""
@@ -851,6 +887,7 @@ def main():
     headliner = build_headliner(cabin)
     liners = build_liners(body)
     roof = build_roof_lining()
+    pillars = build_pillars()
     details = build_details(body, cabin)
     mirrors = build_mirrors()
     exhaust = build_exhaust()

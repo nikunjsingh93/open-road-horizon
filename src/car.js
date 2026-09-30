@@ -125,10 +125,10 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   const clusterMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
   const cluster = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.157), clusterMat);
-  cluster.position.set(-0.36, 1.0, -0.64);
+  cluster.position.set(-0.36, 0.962, -0.64);
   cluster.rotation.x = -0.32;
   const hood = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.03, 0.10), leather);
-  hood.position.set(-0.36, 1.087, -0.70); hood.rotation.x = 0.0;
+  hood.position.set(-0.36, 1.049, -0.70); hood.rotation.x = 0.0;
   const cabin = new THREE.Group(); cabin.add(cab, cluster);
   root.add(cabin);
   cabin.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; } });
