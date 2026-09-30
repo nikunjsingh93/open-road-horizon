@@ -111,7 +111,7 @@ export class UI {
     grid.appendChild(nw);
 
     sec('Car');
-    seg('Vehicle', [['coupe', 'Sport coupe'], ['suv', 'Luxury SUV']], s.car || 'coupe', (k) => { if (k === (s.car || 'coupe')) return; s.car = k; g.saveSettings(); location.search = ''; });
+    seg('Vehicle', [['coupe', 'Sport coupe'], ['suv', 'Luxury SUV']], s.car || 'coupe', (k) => { if (k === (s.car || 'coupe')) return; s.car = k; if (k === 'suv' && s.paint === 'red') s.paint = 'champagne'; g.saveSettings(); location.search = ''; });
     const sw = h('<div class="row"><label>Paint</label><div class="sw"></div></div>');
     const swb = sw.querySelector('.sw');
     for (const [k, hex] of Object.entries(PAINTS)) {

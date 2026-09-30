@@ -31,6 +31,8 @@ export const SPEC = {
   cdA: 0.62, rollRes: 0.011,
   drive: [0, 0, 0.5, 0.5],             // share of the engine torque per wheel (FL FR RL RR): rear wheel drive
   gripK: 1, assistK: 1,                // tyre grip multiplier, stability-assist strength (scales with the car's inertia)
+  steerK: 1, steerRate: 7,             // steering angle multiplier and how fast the wheels turn (rad/s)
+  angDamp: 80, rollDamp: 0,            // angular damping (all axes) and extra roll-rate damping
   collOff: [-1.45, 0, 1.45], collR: 0.95,   // tree-collision circles along the body
   hull: [                               // rigid chassis points (body space, relative to the centre of mass)
     [-0.78, -0.30, -1.4], [0.78, -0.30, -1.4], [-0.78, -0.30, 1.4], [0.78, -0.30, 1.4], [0, -0.30, 0],
@@ -86,7 +88,7 @@ export class Vehicle {
     };
   }
 
-  maxSteer(v) { return Math.min(0.60, 0.62 / (1 + (v / 14) * (v / 14)) + 0.07); }
+  maxSteer(v) { return Math.min(0.60, 0.62 / (1 + (v / 16) * (v / 16)) + 0.11); }      // (keeps a useful amount of lock at motorway speed)
 
   // put the car at an arbitrary spot, upright, heading along direction (dx, dz) - used to recover onto a side track
   placeAt(x, y, z, dx, dz, speed = 0) {
@@ -188,13 +190,13 @@ export class Vehicle {
     this.updateBasis();
     const { right, up, fwd } = this;
     const v = this.speed;
-    let target = this.steerInput * this.maxSteer(v);
+    let target = this.steerInput * this.maxSteer(v) * S.steerK;
     // slip-angle limiter (steering assist): never turn the front wheels far past the tyre grip peak, so full lock = maximum grip, not plough-on
     if (this.assist > 0 && v > 3) {
       const fa = Math.max(Math.abs(this.wheels[0].slipAngle), Math.abs(this.wheels[1].slipAngle));
       if (fa > 0.17) target *= clamp(0.17 / fa, 0.45, 1);
     }
-    this.steerAngle += clamp(target - this.steerAngle, -7.0 * dt, 7.0 * dt);
+    this.steerAngle += clamp(target - this.steerAngle, -S.steerRate * dt, S.steerRate * dt);
 
     const totalF = this._tot.set(0, -S.mass * G, 0);
     const torque = this._trq.set(0, 0, 0);
@@ -332,7 +334,8 @@ export class Vehicle {
       totalF.addScaledVector(this.vel, -0.5 * 1.2 * S.cdA * sp);
       totalF.addScaledVector(up, -0.5 * 1.2 * 0.28 * sp * sp);
     }
-    torque.addScaledVector(this.omega, -80);
+    torque.addScaledVector(this.omega, -S.angDamp);
+    if (S.rollDamp) torque.addScaledVector(fwd, -S.rollDamp * this.omega.dot(fwd));
     if (this.assist > 0 && this.speed > 4 && this.onGround > 2) {
       const yaw = this.omega.dot(up);
       const want = this.fwdSpeed * Math.tan(this.steerAngle) / S.wheelbase * 0.92;

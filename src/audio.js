@@ -160,6 +160,28 @@ export class AudioEngine {
     o.start(t); o.stop(t + 0.5); n.start(t, Math.random()); n.stop(t + 0.35);
   }
 
+  // car horn: two detuned, slightly buzzy tones (a major third apart), held while the button is down
+  horn(on, pitch = 1) {
+    if (!this.started) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (on && !this._horn) {
+      const out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t); out.gain.exponentialRampToValueAtTime(0.5, t + 0.03);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2200; lp.Q.value = 1.2;
+      const oscs = [];
+      for (const [f, type] of [[392 * pitch, 'sawtooth'], [494 * pitch, 'sawtooth'], [784 * pitch, 'square']]) {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; o.detune.value = (Math.random() - 0.5) * 14;
+        const g = ctx.createGain(); g.gain.value = type === 'square' ? 0.06 : 0.22;
+        o.connect(g); g.connect(lp); o.start(t); oscs.push(o);
+      }
+      lp.connect(out); out.connect(this.master);
+      this._horn = { out, oscs };
+    } else if (!on && this._horn) {
+      const h = this._horn; this._horn = null;
+      h.out.gain.cancelScheduledValues(t); h.out.gain.setTargetAtTime(0.0001, t, 0.03);
+      for (const o of h.oscs) o.stop(t + 0.2);
+    }
+  }
+
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.setTargetAtTime(this.muted ? 0 : this.masterVol, this.ctx.currentTime, 0.05); return this.muted; }
   toggleMusic() { this.musicOn = !this.musicOn; return this.musicOn; }
   setVolume(v) { this.masterVol = v; if (this.master && !this.muted) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); }

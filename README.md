@@ -61,7 +61,7 @@ Gamepads work too (left stick, analog RT gas / LT brake-reverse, A handbrake, Y 
 * **Off-road side tracks** – dirt tracks branch off the main road roughly every kilometre and wind up into the hills.
 * **Wildlife** – sheep, cows and deer with walking / trotting animation: they graze, stroll, and run from a fast car;
   they can be bumped. Flocks of birds circle overhead.
-* **Oncoming traffic** – now and then a car of a random colour drives towards you in the opposite lane (no collision, can be switched off).
+* **Traffic** – cars of random colours come towards you in the opposite lane and others drive ahead of you in your own direction (slower, so you overtake); no collisions. Press **B** (or the Horn button on touch) to honk. Can be switched off.
 * **Weather & seasons** – clear, cloudy, overcast, rain, storm, fog, snow; spring (blossom, flowers), summer, autumn and winter (bare trees, snow
   cover, reduced grip). Day/night cycle with headlights.
 * **Two cars** (Settings > Car > Vehicle) – a sport coupe and a luxury SUV (Range-Rover-style: 2.4 t, four wheel drive, soft and tall, more body roll, longer braking distances), each with its own physics numbers and camera / cockpit layout (`src/cars.js`).

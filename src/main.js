@@ -421,6 +421,7 @@ class Game {
       if (!v && gp.mapping !== 'standard' && gp.axes[ai] !== undefined && gp.axes[ai] > -1) v = (gp.axes[ai] + 1) / 2;   // some browsers expose triggers as -1..1 axes
       return v < 0.03 ? 0 : v;
     };
+    P.horn = !!((gp.buttons[10] && gp.buttons[10].pressed) || (gp.buttons[11] && gp.buttons[11].pressed));
     P.thr = trig(7, 5);
     P.brk = trig(6, 4);
     P.hb = gp.buttons[0] && gp.buttons[0].pressed ? 1 : 0;
@@ -439,7 +440,7 @@ class Game {
       throttle = (k.KeyW || k.ArrowUp) ? 1 : 0;
       brake = (k.KeyS || k.ArrowDown) ? 1 : 0;
       const target = ((k.KeyD || k.ArrowRight) ? 1 : 0) - ((k.KeyA || k.ArrowLeft) ? 1 : 0);
-      const rate = target === 0 ? 5 : (Math.sign(target) === Math.sign(this.steerSmooth) || this.steerSmooth === 0 ? 2.6 : 5.5);
+      const rate = target === 0 ? 5 : (Math.sign(target) === Math.sign(this.steerSmooth) || this.steerSmooth === 0 ? 3.2 : 6);
       this.steerSmooth += clamp(target - this.steerSmooth, -rate * dt, rate * dt);
       steer = this.steerSmooth; hb = k.Space ? 1 : 0;
       if (this.pad.active) {
@@ -452,6 +453,7 @@ class Game {
     v.manual = cfg.gearbox === 'manual' && !this.auto;
     if (!v.manual && v.gear === 0) v.gear = 1;
     v.tune.power = cfg.power ?? 1; v.tune.grip = cfg.grip ?? 1; v.tcOn = cfg.tc !== false;
+    this.audio.horn(!!(k.KeyB || this.pad.horn), this.carDef.horn || 1);
     v.drive(throttle, brake, steer, hb, dt);
     v.step(dt, sub);
     this.collide();

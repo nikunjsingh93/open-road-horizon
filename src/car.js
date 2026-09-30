@@ -4,7 +4,7 @@ import { hooks, LITE } from './gfx.js';
 import { SPEC } from './vehicle.js';
 
 export const PAINTS = {
-  red: 0x9c0e16, blue: 0x0b2f6b, green: 0x0f3d2a, silver: 0x9a9da3, white: 0xdedbd2, black: 0x0c0c0e, orange: 0xc4470a, yellow: 0xd2a30a,
+  red: 0x9c0e16, champagne: 0xb19873, blue: 0x0b2f6b, green: 0x0f3d2a, silver: 0x9a9da3, white: 0xdedbd2, black: 0x0c0c0e, orange: 0xc4470a, yellow: 0xd2a30a,
 };
 
 function makeMaterials() {
@@ -87,6 +87,7 @@ export async function loadCar(def) {
   // ---- driver's steering wheel + instrument cluster (animated at runtime) ----
   const cab = new THREE.Group();
   cab.position.set(...def.cab.wheel);
+  cab.scale.setScalar(def.cab.scale || 1);
   cab.rotation.x = 0.0;
   const leather = new THREE.MeshStandardMaterial({ color: 0x151517, roughness: 0.62, metalness: 0.0 });
   const metal = new THREE.MeshStandardMaterial({ color: 0x8a8d92, roughness: 0.35, metalness: 0.9 });
