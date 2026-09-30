@@ -32,7 +32,7 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 | `E` / `Q` | shift up / down (when *Gearbox → Manual* is selected in settings) |
 | `1`–`6`, `0`, `Z` | pick a gear directly in manual mode: gears 1–6, neutral, reverse |
 | `C` | autopilot (relaxed cruising, follows the road) |
-| `V` | cycle camera: chase · far · low · hood · cockpit (working steering wheel + instrument cluster) |
+| `V` | cycle camera: chase · far · rally · hood · cockpit (working steering wheel + instrument cluster) |
 | `R` | recover onto the road |
 | `T` | jump time of day, `G` cycle weather, `K` cycle car paint |
 | `Shift`+`F` | full screen (also a button in settings) |
@@ -42,7 +42,7 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 
 **Touch screens** (phones / tablets) get on-screen controls automatically: steer ◀ ▶ bottom-left, gas / brake / handbrake bottom-right, camera · autopilot · reset · menu top-right, and drag anywhere else to look around. Desktop browsers never show them.
 
-Gamepads work too (left stick, RT/LT, A handbrake, Y camera, X autopilot, Start menu).
+Gamepads work too (left stick, analog RT gas / LT brake-reverse, A handbrake, Y camera, X autopilot, B recover, D-pad up lights, bumpers shift, Start menu).
 
 ## What is in the box
 

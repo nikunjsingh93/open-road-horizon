@@ -154,10 +154,11 @@ export class Vehicle {
       this.throttle = accelKey; this.brake = brakeKey;     // pedals do what they say; the gear lever decides the direction
     } else if (this.gear >= 1) {
       this.throttle = accelKey; this.brake = brakeKey;
-      if (brakeKey > 0.1 && accelKey < 0.1 && this.fwdSpeed < 0.6) { this.gear = -1; this._revHold = 0; }
+      if (brakeKey > 0.1 && accelKey < 0.1 && this.fwdSpeed < 0.6 && this.up.y > 0.6 && this.onGround >= 2) { this.gear = -1; this._revHold = 0; }
     } else {
       this.throttle = brakeKey; this.brake = accelKey;
-      if (accelKey > 0.1 && brakeKey < 0.1 && this.fwdSpeed > -0.6) this.gear = 1;
+      if (accelKey > 0.1 && brakeKey < 0.1) this.gear = 1;      // gas always means forward (if still rolling back it brakes that first)
+      else if (this.up.y < 0.3 || this.onGround < 1) { if (brakeKey < 0.1) this.gear = 1; }   // tumbling / airborne: never stay latched in reverse
     }
     this.steerInput = steer; this.handbrake = handbrake;
   }

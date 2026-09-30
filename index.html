@@ -36,7 +36,10 @@
   @keyframes pulse { 0%,100% { opacity: .35 } 50% { opacity: .95 } }
   #menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 20; background: rgba(6,9,13,.42); backdrop-filter: blur(6px); }
   #menu.open { display: flex; }
-  #panel { width: min(860px, 94vw); max-height: 86vh; overflow: auto; background: var(--glass); border: 1px solid var(--line); border-radius: 16px; padding: 26px 32px 30px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  #pwrap { position: relative; width: min(860px, 94vw); }
+  #xclose { position: absolute; top: 10px; right: 10px; z-index: 2; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,.1); color: var(--fg); font-size: 17px; line-height: 1; cursor: pointer; }
+  #xclose:hover { background: var(--acc); color: #1a1408; }
+  #panel { width: 100%; box-sizing: border-box; max-height: 86vh; overflow: auto; background: var(--glass); border: 1px solid var(--line); border-radius: 16px; padding: 26px 32px 30px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
   #panel h1 { margin: 0 0 4px; font-weight: 200; letter-spacing: 8px; font-size: 20px; text-transform: uppercase; }
   #panel .sub { font-size: 12px; opacity: .55; letter-spacing: 1px; margin-bottom: 20px; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 36px; }
@@ -72,7 +75,7 @@
   <div class="s">Click or press any key to drive</div>
   <div class="k">Endless procedural roads &nbsp;·&nbsp; relax, cruise, explore<br>Headphones recommended</div>
 </div>
-<div id="menu"><div id="panel"></div></div>
+<div id="menu"><div id="pwrap"><button id="xclose" aria-label="Close settings" title="Close (Esc)">✕</button><div id="panel"></div></div></div>
 <div id="loading"><div class="t">Open Road</div><div class="bar"><i id="lbar"></i></div><div class="s" id="lstat">Generating world</div></div>
 <script type="module" src="/src/main.js"></script>
 </body>

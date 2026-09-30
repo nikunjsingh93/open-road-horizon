@@ -137,9 +137,9 @@ class Game {
     this.audio.masterVol = S.volume; this.audio.musicVol = S.music;
 
     // camera
-    this.camMode = S.camera;
+    this.camMode = S.camera === 'low' ? 'rally' : S.camera;
     this.camDir = new THREE.Vector3(0, 0, -1);
-    this._dirL = new THREE.Vector3(); this._up = new THREE.Vector3(0, 1, 0); this._x = new THREE.Vector3(1, 0, 0);
+    this._dirL = new THREE.Vector3(); this._tmpR = new THREE.Vector3(); this._up = new THREE.Vector3(0, 1, 0); this._x = new THREE.Vector3(1, 0, 0);
     this.camPos = new THREE.Vector3();
     this.camLook = new THREE.Vector3();
     this.shakeT = 0;
@@ -336,7 +336,7 @@ class Game {
   toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(this._tt); this._tt = setTimeout(() => t.style.opacity = 0, 1800); }
 
   cycleCamera() {
-    const modes = ['chase', 'far', 'low', 'hood', 'cockpit'];
+    const modes = ['chase', 'far', 'rally', 'hood', 'cockpit'];
     this.camMode = modes[(modes.indexOf(this.camMode) + 1) % modes.length];
     this.settings.camera = this.camMode; this.saveSettings();
     this.toast('Camera: ' + this.camMode);
@@ -357,11 +357,17 @@ class Game {
     P.active = true;
     const dz = (v) => Math.abs(v) < 0.1 ? 0 : (v - Math.sign(v) * 0.1) / 0.9;
     P.steer = dz(gp.axes[0] || 0);
-    P.thr = gp.buttons[7] ? gp.buttons[7].value : 0;
-    P.brk = gp.buttons[6] ? gp.buttons[6].value : 0;
+    // triggers are fully analog: a light squeeze is a light pedal (0..1), on both gas (RT) and brake / reverse (LT)
+    const trig = (bi, ai) => {
+      let v = gp.buttons[bi] ? gp.buttons[bi].value : 0;
+      if (!v && gp.mapping !== 'standard' && gp.axes[ai] !== undefined && gp.axes[ai] > -1) v = (gp.axes[ai] + 1) / 2;   // some browsers expose triggers as -1..1 axes
+      return v < 0.03 ? 0 : v;
+    };
+    P.thr = trig(7, 5);
+    P.brk = trig(6, 4);
     P.hb = gp.buttons[0] && gp.buttons[0].pressed ? 1 : 0;
     const edge = (i, fn) => { const on = gp.buttons[i] && gp.buttons[i].pressed; if (on && !P.prev[i]) fn(); P.prev[i] = on; };
-    edge(3, () => this.cycleCamera()); edge(9, () => this.ui.toggle()); edge(2, () => { this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); }); edge(1, () => this.recover()); edge(5, () => this.shift(1)); edge(4, () => this.shift(-1));
+    edge(3, () => this.cycleCamera()); edge(9, () => this.ui.toggle()); edge(2, () => { this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); }); edge(1, () => this.recover()); edge(5, () => this.shift(1)); edge(4, () => this.shift(-1)); edge(12, () => this.cycleLights());
   }
 
   // ---------------- simulation ----------------
@@ -391,7 +397,8 @@ class Game {
     v.drive(throttle, brake, steer, hb, dt);
     v.step(dt, sub);
     this.collide();
-    if (v.up.y < 0.15 && v.speed < 3) this.recover();
+    // (no automatic reset: R puts the car back on the road)
+    if (v.up.y < 0.2 && v.speed < 2) { this._flipT = (this._flipT || 0) + dt; if (this._flipT > 2.5 && !this._flipHint) { this._flipHint = true; this.toast('Stuck? Press R to get back on the road'); } } else { this._flipT = 0; this._flipHint = false; }
     this.time += dt;
   }
 
@@ -497,7 +504,7 @@ class Game {
     const fwdH = new THREE.Vector3(v.fwd.x, 0, v.fwd.z).normalize();
     const velH = new THREE.Vector3(v.vel.x, 0, v.vel.z);
     let want = fwdH;
-    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, 0.55).normalize(); }
+    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, this.camMode === 'rally' ? 0.92 : 0.55).normalize(); }
     const kd = snap ? 1 : 1 - Math.exp(-dt * 3.2);
     this.camDir.lerp(want, kd).normalize();
     {   // mouse look eases back to centre a moment after the mouse stops
@@ -513,14 +520,21 @@ class Game {
     const shake = this.settings.shake * (Math.min(sp / 45, 1) * (v.wheels[2].surf === 0 ? 0.6 : 1.8) + this.crash * 4);
     this.shakeT += dt;
     const sx = (Math.sin(this.shakeT * 31.1) + Math.sin(this.shakeT * 17.3 + 1.3)) * 0.5 * shake, sy = (Math.sin(this.shakeT * 27.7 + 2.1) + Math.sin(this.shakeT * 13.1)) * 0.5 * shake;
-    if (m === 'chase' || m === 'far' || m === 'low') {
-      const dist = m === 'far' ? 10.5 : m === 'low' ? 5.2 : 6.4, height = m === 'far' ? 3.6 : m === 'low' ? 0.85 : 1.95;
+    if (m === 'chase' || m === 'far' || m === 'rally') {
+      const rally = m === 'rally';
+      const dist = m === 'far' ? 10.5 : rally ? 4.5 : 6.4, height = m === 'far' ? 3.6 : rally ? 1.2 : 1.95;
+      if (rally) fov = this.settings.fov + 7 + Math.min(sp * 0.2, 14);      // wide, punchy lens that stretches with speed
       // mouse orbit: view yaw swings the camera around the car, view pitch (up) lowers it
       const L = this.look, ya = L.yaw, el = -clamp(L.pitch, -1.05, 0.3);
       const dirL = this._dirL.copy(this.camDir).applyAxisAngle(this._up, ya);
       pos = carPos.clone().addScaledVector(dirL, -dist * Math.cos(el));
+      if (rally) {   // the camera swings out to the outside of a slide, like a rally broadcast cam
+        const side = clamp(v.vel.dot(v.right) * 0.09, -1.1, 1.1);
+        pos.addScaledVector(this._tmpR.set(dirL.z, 0, -dirL.x), -side);
+      }
       pos.y = carPos.y - SPEC.comH + height + dist * Math.sin(el);
-      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (m === 'low' ? 1.0 : 1.3);
+      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.8 : 1.3);
+      if (rally) look.addScaledVector(this.camDir, -1.5);              // aim closer to the car: it sits low in the frame with the road ahead above it
       const gy = this.world.height(pos.x, pos.z) + 0.6;
       if (pos.y < gy) pos.y = gy;
       // smooth the offset relative to the car (not the world position) so the camera never trails behind at high speed
@@ -533,7 +547,8 @@ class Game {
       cam.position.copy(this.camPos);
       cam.up.set(0, 1, 0);
       cam.lookAt(this.camLook);
-      cam.rotateZ(sx * 0.0016); cam.rotateX(sy * 0.0012);
+      cam.rotateZ(sx * 0.0016 * (rally ? 1.8 : 1)); cam.rotateX(sy * 0.0012 * (rally ? 1.8 : 1));
+      if (rally) cam.rotateZ(clamp(-v.steerAngle * 0.35, -0.12, 0.12) * Math.min(1, sp / 25));   // lean into the corner
     } else {
       const off = m === 'hood' ? new THREE.Vector3(0, 1.08, -1.05) : new THREE.Vector3(-0.36, 1.14, 0.09);
       const q = v.quat;
