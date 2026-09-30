@@ -785,7 +785,7 @@ def build_headliner(cabin):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index == mi('Glass')], context='FACES')   # keep the windows open
     bm.faces.ensure_lookup_table()
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if face_center(f).z < 0.93 and abs(f.normal.z) > 0.85], context='FACES')   # drop the flat cabin bottom (it would be a table at waist height)
-    front_roof = [f for f in bm.faces if face_center(f).y > 0.30 and face_center(f).z > 1.02]
+    front_roof = [f for f in bm.faces if face_center(f).y > 0.10 and face_center(f).z > 1.02]
     bmesh.ops.delete(bm, geom=front_roof, context='FACES')   # front roof panel: the driver looks out through here
     bm.faces.ensure_lookup_table()
     smooth_boundary(bm, 260)
@@ -806,7 +806,7 @@ def build_roof_lining():
     cols = []
     for j in range(nx + 1):
         u = -1 + 2 * j / nx
-        yf = 0.36 - 0.11 * u * u                                   # arched leading edge
+        yf = 0.17 - 0.10 * u * u                                   # arched leading edge
         col = []
         for i in range(ny + 1):
             y = -1.62 + (yf + 1.62) * (i / ny)
@@ -823,7 +823,8 @@ def build_pillars():
     """Clean A-pillar trims (the cabin shell's own pillars come out jagged where the windshield glass was cut away)."""
     out = []
     for sx in (-1, 1):
-        path = [Vector((sx * 0.655, 0.10, 1.185)), Vector((sx * 0.672, 0.23, 1.150)), Vector((sx * 0.690, 0.50, 1.090)), Vector((sx * 0.715, 0.76, 1.030)), Vector((sx * 0.735, 0.975, 0.985))]
+        rail = [Vector((sx * (interp(WT, yy) + 0.008), yy, interp(ROOF, yy) - 0.150)) for yy in (-1.45, -1.2, -0.95, -0.7, -0.45, -0.2, 0.0)]   # roof-rail trim along the lining edge: the pillar has no visible end
+        path = rail + [Vector((sx * 0.680, 0.07, 1.158)), Vector((sx * 0.690, 0.40, 1.095)), Vector((sx * 0.715, 0.76, 1.030)), Vector((sx * 0.735, 0.975, 0.985))]
         # smooth the polyline into a dense curve
         pts = []
         for k in range(len(path) - 1):
@@ -839,7 +840,7 @@ def build_pillars():
             bb = aa.cross(tng).normalized()
             if bb.z < 0: bb = -bb
             ring = []
-            k = min(1.0, 0.35 + idx / 10.0) * min(1.0, 0.5 + (len(pts) - 1 - idx) / 6.0)   # tuck the ends into the roof / dash
+            k = min(1.0, 0.45 + idx / 10.0) * min(1.0, 0.5 + (len(pts) - 1 - idx) / 6.0)   # tuck the ends into the roof / dash
             for s_ in range(seg):
                 ang = 2 * math.pi * s_ / seg
                 ring.append(bm.verts.new(p + aa * (0.034 * k * math.cos(ang)) + bb * (0.022 * k * math.sin(ang))))
@@ -847,11 +848,11 @@ def build_pillars():
         for i in range(len(rings) - 1):
             for s_ in range(seg):
                 f = bm.faces.new((rings[i][s_], rings[i][(s_ + 1) % seg], rings[i + 1][(s_ + 1) % seg], rings[i + 1][s_]))
-                f.material_index = mi('Trim'); f.smooth = True
+                f.material_index = mi('BlackPlastic'); f.smooth = True
         for cap in (rings[0], list(reversed(rings[-1]))):
-            f = bm.faces.new(cap); f.material_index = mi('Trim')
+            f = bm.faces.new(cap); f.material_index = mi('BlackPlastic')
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-        out.append(make_obj('HeadlinerPillar', bm, mat_idx=mi('Trim')))
+        out.append(make_obj('HeadlinerPillar', bm, mat_idx=mi('BlackPlastic')))
     return out
 
 def build_liners(body):

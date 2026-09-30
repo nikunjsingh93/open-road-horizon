@@ -599,7 +599,7 @@ class Game {
     const v = this.vehicle, w = this.weather;
     this.audio.update({
       rpm: v.rpm, throttle: v.throttle, speed: v.speed, slip: v.slip, surf: v.wheels[2].surf, cam: this.camMode,
-      slipAng: Math.max(...v.wheels.map(x => Math.abs(x.slipAngle))), lockR: Math.max(Math.abs(v.wheels[2].slipRatio), Math.abs(v.wheels[3].slipRatio)), hb: v.handbrake,
+      slipAng: Math.max(...v.wheels.map(x => Math.abs(x.slipAngle))), lockR: Math.max(Math.abs(v.wheels[2].slipRatio), Math.abs(v.wheels[3].slipRatio)), hb: v.handbrake, spinR: Math.max(0, v.wheels[2].slipRatio, v.wheels[3].slipRatio),
       night: this.sky.night, rain: this.paused ? w.state.rain * 0.4 : w.state.rain, wind: w.wind, dt,
     });
   }
