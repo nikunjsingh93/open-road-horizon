@@ -29,6 +29,7 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 | `A` `D` / `←` `→` | steer |
 | `Space` | handbrake |
 | `E` / `Q` | shift up / down (when *Gearbox → Manual* is selected in settings) |
+| `1`–`6`, `0`, `Z` | pick a gear directly in manual mode: gears 1–6, neutral, reverse |
 | `C` | autopilot (relaxed cruising, follows the road) |
 | `V` | cycle camera: chase · far · low · hood · cockpit (working steering wheel + instrument cluster) |
 | `R` | recover onto the road |

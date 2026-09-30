@@ -336,24 +336,15 @@ export class Vehicle {
     this._gearbox();
   }
 
-  // manual gearbox: -1 = R, 0 = N, 1..6
-  shiftUp() {
-    if (!this.manual || this.shiftTimer > 0.05) return false;
-    if (this.gear < 6) this.gear++; else return false;
-    this.shiftTimer = 0.2; return true;
+  // manual gearbox: -1 = R, 0 = N, 1..6 - any gear can be picked at any time (the rev limiter protects the engine)
+  setGear(g) {
+    if (!this.manual) return false;
+    g = Math.max(-1, Math.min(6, g | 0));
+    if (g === this.gear) return false;
+    this.gear = g; this.shiftTimer = 0.15; return true;
   }
-  shiftDown() {
-    if (!this.manual || this.shiftTimer > 0.05) return false;
-    const S = SPEC;
-    if (this.gear > 1) {
-      const rpmAfter = Math.abs(this.fwdSpeed) / S.radius * 60 / (2 * Math.PI) * S.gears[this.gear - 2] * S.finalDrive;
-      if (rpmAfter > S.redline * 1.03) return false;                 // would over-rev the engine
-      this.gear--;
-    } else if (this.gear === 1) this.gear = 0;
-    else if (this.gear === 0) { if (Math.abs(this.fwdSpeed) > 3) return false; this.gear = -1; }
-    else return false;
-    this.shiftTimer = 0.2; return true;
-  }
+  shiftUp() { return this.setGear(this.gear + 1); }
+  shiftDown() { return this.setGear(this.gear - 1); }
 
   _raycast(org, up, maxLen) {
     const dy = up.y;

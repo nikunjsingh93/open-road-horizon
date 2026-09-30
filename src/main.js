@@ -269,6 +269,9 @@ class Game {
         case 'KeyV': this.cycleCamera(); break;
         case 'KeyE': this.shift(1); break;
         case 'KeyQ': this.shift(-1); break;
+        case 'Digit0': this.vehicle.setGear(0); break;
+        case 'KeyZ': this.vehicle.setGear(-1); break;
+        case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': this.vehicle.setGear(+e.code.slice(5)); break;
         case 'KeyR': this.recover(); break;
         case 'KeyH': this.settings.showHud = !this.settings.showHud; this.hudEl.classList.toggle('hidden'); $('topbar').classList.toggle('hidden'); this.saveSettings(); break;
         case 'KeyT': this.setTimeOfDay(Math.floor(this.hour + 1.5) % 24); this.toast(`Time ${String(Math.floor(this.hour)).padStart(2, '0')}:00`); break;
@@ -307,7 +310,7 @@ class Game {
   shift(d) {
     const v = this.vehicle;
     if (!v.manual) return;
-    if (!(d > 0 ? v.shiftUp() : v.shiftDown())) { if (v.shiftTimer <= 0.05) this.toast('Gear not available'); }
+    if (d > 0) v.shiftUp(); else v.shiftDown();
   }
 
   toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(this._tt); this._tt = setTimeout(() => t.style.opacity = 0, 1800); }

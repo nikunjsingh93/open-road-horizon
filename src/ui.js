@@ -73,7 +73,7 @@ export class UI {
       swb.appendChild(i);
     }
     grid.appendChild(sw);
-    seg('Gearbox', [['auto', 'Automatic'], ['manual', 'Manual (E / Q)']], s.gearbox, (k) => { s.gearbox = k; g.saveSettings(); g.toast(k === 'manual' ? 'Manual gearbox: E shift up, Q shift down' : 'Automatic gearbox'); });
+    seg('Gearbox', [['auto', 'Automatic'], ['manual', 'Manual (E/Q, 1-6, 0, Z)']], s.gearbox, (k) => { s.gearbox = k; g.saveSettings(); g.toast(k === 'manual' ? 'Manual gearbox: E/Q shift, 1-6 pick a gear, 0 neutral, Z reverse' : 'Automatic gearbox'); });
     slider('Engine power', 0.6, 1.8, 0.05, s.power, (v) => { s.power = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     slider('Tyre grip', 0.7, 1.6, 0.05, s.grip, (v) => { s.grip = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     seg('Traction control', [['on', 'On'], ['off', 'Off']], s.tc !== false ? 'on' : 'off', (k) => { s.tc = k === 'on'; g.saveSettings(); });
