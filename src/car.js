@@ -22,7 +22,7 @@ function makeMaterials() {
   m.HeadLamp = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2dc, emissiveIntensity: 1.2, roughness: 0.3 });
   m.TailLamp = new THREE.MeshStandardMaterial({ color: 0x2a0000, emissive: 0xff0a05, emissiveIntensity: 0.9, roughness: 0.2 });
   m.WheelWell = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95 });
-  m.Headliner = new THREE.MeshStandardMaterial({ color: 0x7c7d82, emissive: 0x2a2b2e, roughness: 0.9, side: THREE.DoubleSide });
+  m.Headliner = new THREE.MeshStandardMaterial({ color: 0x9a9ba0, emissive: 0x3c3d41, roughness: 0.9, side: THREE.DoubleSide });
   m.Interior = new THREE.MeshStandardMaterial({ color: 0x9a968e, emissive: 0x3a3833, roughness: 0.8 });
   m.Seat = new THREE.MeshStandardMaterial({ color: 0x6b4a32, emissive: 0x24160c, roughness: 0.55 });
   m.Plate = new THREE.MeshStandardMaterial({ color: 0xdedbd0, roughness: 0.5 });
@@ -91,7 +91,20 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const spin = new THREE.Group();
   // Model-Y style wheel: plain round padded rim, one horizontal bar with a rounded centre pad, thumb rollers on the bar
   const rimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.5, metalness: 0.0 });
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.0195, 20, 72), rimMat);
+  // rim outline: a circle with flattened top and bottom (straight runs) so the gauges above stay readable
+  const RW = 0.145, HT = 0.074, HB = 0.108;
+  let outline = [];
+  for (let i = 0; i < 128; i++) {
+    const a = (i / 128) * Math.PI * 2;
+    const x = RW * Math.cos(a), yy = RW * Math.sin(a);
+    outline.push([x, Math.max(-HB, Math.min(HT, yy))]);
+  }
+  for (let pass = 0; pass < 3; pass++) outline = outline.map((p, i) => {   // soften the four corners a little
+    const q = outline[(i + 127) % 128], r = outline[(i + 1) % 128];
+    return [(q[0] + 2 * p[0] + r[0]) / 4, (q[1] + 2 * p[1] + r[1]) / 4];
+  });
+  const rimCurve = new THREE.CatmullRomCurve3(outline.map(p => new THREE.Vector3(p[0], p[1], 0)), true, 'centripetal');
+  const rim = new THREE.Mesh(new THREE.TubeGeometry(rimCurve, 160, 0.0195, 18, true), rimMat);
   rim.scale.z = 0.82; spin.add(rim);
   const barGeo = new THREE.CapsuleGeometry(0.02, 0.23, 8, 16);
   const bar = new THREE.Mesh(barGeo, rimMat); bar.rotation.z = Math.PI / 2; bar.scale.set(1, 1, 0.72); bar.position.y = -0.012; spin.add(bar);
@@ -102,7 +115,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
     roller.rotation.x = Math.PI / 2; roller.position.set(sx * 0.084, -0.012, 0.0155); spin.add(roller);
   }
   const mark = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.004), metal);   // 12 o'clock marker
-  mark.position.set(0, 0.145, 0.016); spin.add(mark);
+  mark.position.set(0, HT, 0.016); spin.add(mark);
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 16), leather);
   stem.rotation.x = Math.PI / 2; stem.position.z = -0.1; column.add(stem);
   column.add(spin); cab.add(column);
@@ -112,10 +125,10 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8;
   const clusterMat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
   const cluster = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.157), clusterMat);
-  cluster.position.set(-0.36, 0.99, -0.64);
+  cluster.position.set(-0.36, 1.0, -0.64);
   cluster.rotation.x = -0.32;
   const hood = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.03, 0.10), leather);
-  hood.position.set(-0.36, 1.072, -0.70); hood.rotation.x = 0.0;
+  hood.position.set(-0.36, 1.087, -0.70); hood.rotation.x = 0.0;
   const cabin = new THREE.Group(); cabin.add(cab, cluster);
   root.add(cabin);
   cabin.traverse(o => { if (o.isMesh) { o.frustumCulled = false; o.castShadow = false; o.receiveShadow = true; } });
