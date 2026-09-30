@@ -536,7 +536,7 @@ class Game {
     const sx = (Math.sin(this.shakeT * 31.1) + Math.sin(this.shakeT * 17.3 + 1.3)) * 0.5 * shake, sy = (Math.sin(this.shakeT * 27.7 + 2.1) + Math.sin(this.shakeT * 13.1)) * 0.5 * shake;
     if (m === 'chase' || m === 'far' || m === 'rally') {
       const rally = m === 'rally';
-      const dist = m === 'far' ? 10.5 : rally ? 16 : 6.4, height = m === 'far' ? 3.6 : rally ? 14 : 1.95;
+      const dist = m === 'far' ? 10.5 : rally ? 20 : 6.4, height = m === 'far' ? 3.6 : rally ? 12 : 1.95;
       if (rally) fov = this.settings.fov * 0.9 + Math.min(sp * 0.05, 4);   // narrow lens: the flattened, top-down 'rally game' look
       // mouse orbit: view yaw swings the camera around the car, view pitch (up) lowers it
       const L = this.look, ya = L.yaw, el = -clamp(L.pitch, -1.05, 0.3);
@@ -545,7 +545,7 @@ class Game {
 
       pos.y = carPos.y - SPEC.comH + height + dist * Math.sin(el);
       look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.0 : 1.3);
-      if (rally) look.addScaledVector(this.camDir, 5 + Math.min(sp * 0.2, 9));   // look well ahead: the car sits in the lower third with the road ahead of it
+      if (rally) look.addScaledVector(this.camDir, 6 + Math.min(sp * 0.18, 8));   // look well ahead: the car sits in the lower third with the road ahead of it
       const gy = this.world.height(pos.x, pos.z) + 0.6;
       if (pos.y < gy) pos.y = gy;
       // smooth the offset relative to the car (not the world position) so the camera never trails behind at high speed
