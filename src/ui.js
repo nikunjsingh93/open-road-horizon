@@ -106,7 +106,7 @@ export class UI {
     slider('Engine power', 0.6, 1.8, 0.05, s.power, (v) => { s.power = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     slider('Tyre grip', 0.7, 1.6, 0.05, s.grip, (v) => { s.grip = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     seg('Traction control', [['on', 'On'], ['off', 'Off']], s.tc !== false ? 'on' : 'off', (k) => { s.tc = k === 'on'; g.saveSettings(); });
-    seg('Camera', [['chase', 'Chase'], ['far', 'Far'], ['rally', 'Rally'], ['hood', 'Hood'], ['cockpit', 'Cockpit']], g.camMode, (k) => { g.camMode = k; s.camera = k; g.saveSettings(); });
+    seg('Camera', [['chase', 'Chase'], ['far', 'Far'], ['top', 'Top'], ['hood', 'Hood'], ['cockpit', 'Cockpit']], g.camMode, (k) => { g.camMode = k; s.camera = k; g.saveSettings(); });
     slider('Field of view', 45, 90, 1, s.fov, (v) => { s.fov = v; g.saveSettings(); }, (v) => v.toFixed(0) + '°');
     slider('Camera shake', 0, 2, 0.1, s.shake, (v) => { s.shake = v; g.saveSettings(); }, (v) => v.toFixed(1));
     slider('Mouse look', 0, 2, 0.1, s.mouse, (v) => { s.mouse = v; if (v <= 0 && document.exitPointerLock) document.exitPointerLock(); g.saveSettings(); }, (v) => v <= 0 ? 'off' : v.toFixed(1) + '×');

@@ -137,7 +137,7 @@ class Game {
     this.audio.masterVol = S.volume; this.audio.musicVol = S.music;
 
     // camera
-    this.camMode = S.camera === 'low' ? 'rally' : S.camera;
+    this.camMode = (S.camera === 'low' || S.camera === 'rally') ? 'top' : S.camera;
     this.camDir = new THREE.Vector3(0, 0, -1);
     this._dirL = new THREE.Vector3(); this._tmpR = new THREE.Vector3(); this._up = new THREE.Vector3(0, 1, 0); this._x = new THREE.Vector3(1, 0, 0);
     this.camPos = new THREE.Vector3();
@@ -336,7 +336,7 @@ class Game {
   toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(this._tt); this._tt = setTimeout(() => t.style.opacity = 0, 1800); }
 
   cycleCamera() {
-    const modes = ['chase', 'far', 'rally', 'hood', 'cockpit'];
+    const modes = ['chase', 'far', 'top', 'hood', 'cockpit'];
     this.camMode = modes[(modes.indexOf(this.camMode) + 1) % modes.length];
     this.settings.camera = this.camMode; this.saveSettings();
     this.toast('Camera: ' + this.camMode);
@@ -518,8 +518,8 @@ class Game {
     const fwdH = new THREE.Vector3(v.fwd.x, 0, v.fwd.z).normalize();
     const velH = new THREE.Vector3(v.vel.x, 0, v.vel.z);
     let want = fwdH;
-    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, this.camMode === 'rally' ? 0.45 : 0.55).normalize(); }
-    const kd = snap ? 1 : 1 - Math.exp(-dt * (this.camMode === 'rally' ? 2.2 : 3.2));
+    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, this.camMode === 'top' ? 0.45 : 0.55).normalize(); }
+    const kd = snap ? 1 : 1 - Math.exp(-dt * (this.camMode === 'top' ? 2.2 : 3.2));
     this.camDir.lerp(want, kd).normalize();
     {   // mouse look eases back to centre a moment after the mouse stops
       const L = this.look; L.idle += dt;
@@ -534,8 +534,8 @@ class Game {
     const shake = this.settings.shake * (Math.min(sp / 45, 1) * (v.wheels[2].surf === 0 ? 0.6 : 1.8) + this.crash * 4);
     this.shakeT += dt;
     const sx = (Math.sin(this.shakeT * 31.1) + Math.sin(this.shakeT * 17.3 + 1.3)) * 0.5 * shake, sy = (Math.sin(this.shakeT * 27.7 + 2.1) + Math.sin(this.shakeT * 13.1)) * 0.5 * shake;
-    if (m === 'chase' || m === 'far' || m === 'rally') {
-      const rally = m === 'rally';
+    if (m === 'chase' || m === 'far' || m === 'top') {
+      const rally = m === 'top';
       const dist = m === 'far' ? 10.5 : rally ? 20 : 6.4, height = m === 'far' ? 3.6 : rally ? 12 : 1.95;
       if (rally) fov = this.settings.fov * 0.9 + Math.min(sp * 0.05, 4);   // narrow lens: the flattened, top-down 'rally game' look
       // mouse orbit: view yaw swings the camera around the car, view pitch (up) lowers it
@@ -590,8 +590,11 @@ class Game {
       // moonlight
       this.csm.lightDirection.copy(sd);
       const md = clamp(-sd.y * 5, 0, 1);
-      for (const l of this.csm.lights) { l.color.setRGB(0.55, 0.65, 1.0); l.intensity = 0.45 * md; l.castShadow = md > 0.3; }
+      // moonlight: cool grey-blue and strong enough to read the road, trees and hills without headlights
+      for (const l of this.csm.lights) { l.color.setRGB(0.78, 0.83, 0.92); l.intensity = 0.85 * md * (1 - this.sky.overcast * 0.5); l.castShadow = md > 0.3; }
     }
+    // soft grey sky-glow fill at night (scaled up as the sun drops, off in daylight)
+    this.scene.environmentIntensity = 1.7 + 0.75 * this.sky.night * (1 - this.sky.overcast * 0.4);
     const cam = this.camera;
     if (Math.abs(cam.fov - this._csmFov) > 0.4 || Math.abs(cam.aspect - this._csmAspect) > 0.01) {
       this._csmFov = cam.fov; this._csmAspect = cam.aspect; this.csm.updateFrustums();
