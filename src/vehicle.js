@@ -277,7 +277,7 @@ export class Vehicle {
       wl.copy(gn).cross(wf).normalize().negate();      // right-pointing lateral axis
       vc.copy(this.omega).cross(r).add(this.vel);
       const vx = vc.dot(wf), vy = vc.dot(wl);
-      const mu0 = (wh.surf === 0 ? 1.42 : wh.surf === 1 ? 0.95 : 0.88) * (1 - 0.5 * this.snow) * (1 - 0.22 * this.wet);
+      const mu0 = (wh.surf === 0 ? 1.42 : wh.surf === 1 ? 1.22 : 1.12) * (1 - 0.5 * this.snow) * (1 - 0.22 * this.wet);
       const mu = mu0 * (1 - 0.07 * (f / (S.mass * 2.45) - 1)) * this.tune.grip * S.gripK * (wh.rear ? 1.06 : 1.0);   // a touch more rear grip = less power-on oversteer
       const Fz = f;
       const vref = Math.max(Math.abs(vx), 1.6);
@@ -317,7 +317,7 @@ export class Vehicle {
       wh.omega = clamp(wNew, -420, 420);
       wh.fx = fx; wh.fy = fy; wh.slipRatio = o1[2]; wh.slipAngle = o1[3];
       if (o1[4] > slipMax) slipMax = o1[4];
-      const rr = (wh.surf === 0 ? S.rollRes : wh.surf === 1 ? 0.022 : 0.04) * Fz;
+      const rr = (wh.surf === 0 ? S.rollRes : wh.surf === 1 ? 0.02 : 0.032) * Fz;
       const frr = -Math.tanh(vx * 2) * rr;
       tv.copy(wf).multiplyScalar(fx + frr).addScaledVector(wl, fy);
       totalF.add(tv);
