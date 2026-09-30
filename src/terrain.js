@@ -336,56 +336,74 @@ export class World {
   _genTrail(k) {
     const rnd = mulberry32(hash2(k, 991, this.seed) * 4294967296 | 0);
     const sPos = (k + 1) * TRAIL_SPACING + (rnd() - 0.5) * 260;
-    let i = Math.min(Math.floor(sPos / DS), this.finalized - 3);
-    const th = this.th[i], rx = Math.cos(th), rz = Math.sin(th);   // right vector
-    const fx = Math.sin(th), fz = -Math.cos(th);                     // forward vector
-    const walk = (side) => {
+    const G = 0.115;                                 // max track grade (11.5 %)
+    const rnd0 = rnd;
+    const walk = (side, i) => {
+      const th = this.th[i], rx = Math.cos(th), rz = Math.sin(th);   // right vector
+      const fx = Math.sin(th), fz = -Math.cos(th);                   // forward vector
       let px = this.xs[i] + rx * side * (ROAD_HALF + 1.2), pz = this.zs[i] + rz * side * (ROAD_HALF + 1.2);
-      let ang = Math.atan2(rz * side * 0.85 + fz * 0.5, rx * side * 0.85 + fx * 0.5);
+      let ang = Math.atan2(rz * side * 0.93 + fz * 0.35, rx * side * 0.93 + fx * 0.35);
       const pts = [px, pz], hs = [this.ys[i]];
-      let hCur = this.natural(px, pz), climbed = 0;
-      const steps = 150 + ((rnd() * 60) | 0);
-      const target0 = 0.075 + rnd() * 0.04;
-      const dtheta = [-0.55, -0.3, -0.12, 0, 0.12, 0.3, 0.55];
-      let wander = 0;
+      let yc = this.ys[i], climbed = 0;
+      const steps = 170 + ((rnd() * 70) | 0);
+      const target0 = 0.07 + rnd() * 0.04;
+      const dtheta = [-0.34, -0.24, -0.15, -0.07, 0, 0.07, 0.15, 0.24, 0.34];   // max turn per 9 m step: radius >= 26 m
+      let wander = 0, bad = 0, lastTurn = 0;
+      const q2 = this._tq2 || (this._tq2 = {});
+      // the walk follows the terrain as it really is (road benches / cliff clamps included), not the raw noise
       for (let st = 0; st < steps; st++) {
-        wander += (rnd() - 0.5) * 0.25; wander *= 0.92;
-        const tg = climbed > 230 ? 0.0 : target0;
-        let best = -1e9, bd = 0, bx = 0, bz = 0, bh = 0;
+        wander += (rnd() - 0.5) * 0.06; wander *= 0.9;
+        const tg = climbed > 240 ? 0.0 : target0;
+        let best = -1e9, bd = 0, bx = 0, bz = 0, byn = 0;
         for (const dth of dtheta) {
-          const a2 = ang + dth * 0.8 + wander * 0.15;
-          const nx = px + Math.cos(a2) * TRAIL_STEP, nz = pz + Math.sin(a2) * TRAIL_STEP;
-          const h = this.natural(nx, nz);
-          const grade = (h - hCur) / TRAIL_STEP;
-          let score = -Math.abs(grade - tg) * 14 - Math.abs(dth) * 0.9;
-          if (Math.abs(grade) > 0.16) score -= 6;
+          const dt2 = st < 3 ? 0 : clamp(dth + wander, -0.34, 0.34);   // leave the road in a straight line first
+          const a2 = ang + dt2;
+          const ca = Math.cos(a2), sa = Math.sin(a2);
+          const nx = px + ca * TRAIL_STEP, nz = pz + sa * TRAIL_STEP;
+          const h = this.roadHeight(nx, nz);
+          const yn = clamp(h, yc - G * TRAIL_STEP, yc + G * TRAIL_STEP);       // the track can only climb / fall so fast
+          const cutfill = Math.abs(h - yn);                                    // how far the ground is from the track
+          // cross slope: the ground to either side of the track must not be a wall
+          const hl = this.roadHeight(nx - sa * 4, nz + ca * 4), hr = this.roadHeight(nx + sa * 4, nz - ca * 4);
+          const cross = Math.max(Math.abs(hl - yn), Math.abs(hr - yn)) / 4;
+          let score = -Math.abs((yn - yc) / TRAIL_STEP - tg) * 10 - Math.abs(dt2) * 1.2 - Math.abs(dt2 - lastTurn) * 5 - cutfill * 0.3 - Math.max(0, cross - 0.65) * 5;
+          // never fold back onto the track itself
+          for (let m = 0; m < pts.length / 2 - 4; m++) { const ddx = pts[m * 2] - nx, ddz = pts[m * 2 + 1] - nz; const dd = ddx * ddx + ddz * ddz; if (dd < 900) { score -= dd < 400 ? 100 : 12; if (dd < 400) break; } }
           if (h < this.waterY + 1.6) score -= 40;
-          if (st > 6) { const r = this.nearest(nx, nz, this._tq2 || (this._tq2 = {})); if (r && r.d < 22) score -= 7; }
-          if (score > best) { best = score; bd = dth; bx = nx; bz = nz; bh = h; }
+          if (st > 2) { const r = this.nearest(nx, nz, q2); if (r && r.d < 40) { score -= (40 - r.d) * (st < 14 ? 0.12 : 0.6); if (st >= 4 && r.d < 18) score -= 100; } }   // never come back to the main road
+          if (score > best) { best = score; bd = dth; bx = nx; bz = nz; byn = yn; }
         }
-        if (best < -30) break;
-        ang += bd * 0.8 + wander * 0.15;
+        if (best < -45) { if (++bad > 2) { this._whyEnd = [st, Math.round(best)]; break; } } else bad = 0;
+        lastTurn = clamp(bd + wander, -0.34, 0.34);
+        ang += lastTurn;
         px = bx; pz = bz;
-        climbed += Math.max(bh - hCur, 0);
-        hCur = bh;
-        pts.push(px, pz); hs.push(bh);
+        climbed += Math.max(byn - yc, 0);
+        yc = byn;
+        pts.push(px, pz); hs.push(yc);
       }
       return { pts, hs };
     };
-    const side0 = rnd() < 0.5 ? -1 : 1;
-    let side = side0, { pts, hs } = walk(side0);
-    if (hs.length < 60) { const alt = walk(-side0); if (alt.hs.length > hs.length) { side = -side0; pts = alt.pts; hs = alt.hs; } }
+    // try several junction positions (and both sides) and keep the longest track
+    let side = 1, pts = [], hs = [], bestS = sPos;
+    const offs = [0, 60, -60, 130, -130, 220, -220, 340, -340];
+    for (const off of offs) {
+      const ii = Math.max(20, Math.min(Math.floor((sPos + off) / DS), this.finalized - 3));
+      for (const sd of (rnd() < 0.5 ? [-1, 1] : [1, -1])) {
+        const r = walk(sd, ii);
+        if (r.hs.length > hs.length) { hs = r.hs; pts = r.pts; side = sd; bestS = ii * DS; }
+      }
+      if (hs.length >= 120) break;
+    }
+    (this.trailLog || (this.trailLog = [])).push([k, Math.round(sPos), hs.length]);
     if (hs.length < 25) return;                     // nowhere sensible to go from here
     const n = hs.length;
     // smooth the height profile, limit the grade, and blend the first samples into the road level
     const ys = hs.slice();
-    for (let pass = 0; pass < 6; pass++) {
-      for (let j = 1; j < n - 1; j++) ys[j] = (ys[j - 1] + 2 * ys[j] + ys[j + 1]) / 4;
-    }
-    for (let j = 1; j < n; j++) { const mx = 0.14 * TRAIL_STEP; ys[j] = clamp(ys[j], ys[j - 1] - mx, ys[j - 1] + mx); }
-    for (let j = 0; j < Math.min(n, 12); j++) { const a2 = j / 11; ys[j] = hs[0] + (ys[j] - hs[0]) * a2 * a2; }
+    for (let pass = 0; pass < 2; pass++) for (let j = 1; j < n - 1; j++) ys[j] = (ys[j - 1] + 2 * ys[j] + ys[j + 1]) / 4;
+    for (let j = 1; j < n; j++) { const mx = G * TRAIL_STEP; ys[j] = clamp(ys[j], ys[j - 1] - mx, ys[j - 1] + mx); }
+    for (let j = 0; j < Math.min(n, 8); j++) { const a2 = j / 7; ys[j] = hs[0] + (ys[j] - hs[0]) * a2 * a2 * (3 - 2 * a2); }
     ys[0] = hs[0];
-    const tr = { pts, ys, n, side, s: sPos };
+    const tr = { pts, ys, n, side, s: bestS };
     this.trails.push(tr);
     const idx = this.trails.length - 1;
     for (let j = 0; j < n; j++) {
@@ -429,10 +447,17 @@ export class World {
     const q = this._tq;
     if (!this.trailQuery(x, z, q)) { this.tdist = 99; return h; }
     this.tdist = q.d;
-    const W = 2.2, blend = 3.2 + Math.min(0.9 * Math.abs(h - q.y), 9);
+    const W = 2.4, blend = 3.4 + Math.min(1.7 * Math.abs(h - q.y), 16);
     const a = smoothstep(W, W + blend, q.d);
     const bed = q.y - 0.05 - 0.05 * smoothstep(1.6, 3.2, q.d);
     return bed + (h - bed) * a;
+  }
+
+  // terrain height with the main road carved in but without side tracks (used to lay the tracks out)
+  roadHeight(x, z) {
+    const nat = this.natural(x, z);
+    const r = this.nearest(x, z, this._tr || (this._tr = {}));
+    return (!r || r.d > REACH) ? nat : this._carve(nat, r.y, r.d, x, z);
   }
 
   // full terrain height at (x, z) given road info r (from nearest / nearestHint) - road carve first, then side tracks

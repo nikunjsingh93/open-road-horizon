@@ -35,6 +35,7 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 | `V` | cycle camera: chase · far · low · hood · cockpit (working steering wheel + instrument cluster) |
 | `R` | recover onto the road |
 | `T` | jump time of day, `G` cycle weather, `K` cycle car paint |
+| `Shift`+`F` | full screen (also a button in settings) |
 | `Esc` / `P` | settings menu (time of day, weather, season, world seed, graphics, audio) |
 | Mouse | look around (click the game to capture the mouse, `Esc` releases it and opens the menu) |
 | `H` HUD, `M` mute, `N` music, `F` performance stats |

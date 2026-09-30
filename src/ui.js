@@ -1,6 +1,22 @@
 import { PAINTS } from './car.js';
 import { STYLES } from './terrain.js';
 
+// 12-hour clock: 13.5 -> "1:30 PM"
+export function fmt12(v, mins = true) {
+  v = ((v % 24) + 24) % 24;
+  const hh = Math.floor(v), mm = Math.floor((v - hh) * 60);
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return h12 + (mins ? ':' + String(mm).padStart(2, '0') : '') + ' ' + (hh < 12 ? 'AM' : 'PM');
+}
+export function toggleFullscreen() {
+  const d = document, el = d.documentElement;
+  const on = d.fullscreenElement || d.webkitFullscreenElement;
+  try {
+    if (on) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+    else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+  } catch (e) { /* not supported */ }
+}
+
 export const DEFAULTS = {
   time: 16.8, timeFlow: 'slow', weather: 'clear', season: 'summer', paint: 'red', units: 'kmh', quality: 'high',
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
@@ -57,7 +73,7 @@ export class UI {
       inp.oninput = () => { const v = parseFloat(inp.value); val.textContent = fmt(v); onChange(v); };
       grid.appendChild(row);
     };
-    const fmtTime = (v) => { const hh = Math.floor(v), mm = Math.floor((v - hh) * 60); return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`; };
+    const fmtTime = (v) => fmt12(v);
 
     sec('Environment');
     slider('Time of day', 0, 24, 0.05, g.hour, (v) => { g.setTimeOfDay(v); }, fmtTime);
@@ -96,6 +112,12 @@ export class UI {
     seg('Units', [['kmh', 'km/h'], ['mph', 'mph']], s.units, (k) => { s.units = k; document.getElementById('unit').textContent = k === 'kmh' ? 'km/h' : 'mph'; g.saveSettings(); });
 
     sec('Graphics');
+    const fs = h('<div class="row"><label>Full screen</label><button class="btn"></button></div>');
+    const fsb = fs.querySelector('button');
+    const fsLabel = () => { fsb.textContent = (document.fullscreenElement || document.webkitFullscreenElement) ? 'Exit full screen' : 'Enter full screen'; };
+    fsLabel();
+    fsb.onclick = () => { toggleFullscreen(); setTimeout(fsLabel, 250); };
+    grid.appendChild(fs);
     seg('Quality preset', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['ultra', 'Ultra']], s.quality, (k) => { s.quality = k; g.saveSettings(); location.reload(); });
     slider('Render scale', 0.5, 1.6, 0.05, s.renderScale, (v) => { s.renderScale = v; g.applyRenderScale(); g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
     seg('Dynamic resolution', [['on', 'On'], ['off', 'Off']], s.dynamicRes ? 'on' : 'off', (k) => { s.dynamicRes = k === 'on'; g.saveSettings(); });

@@ -20,7 +20,8 @@ import { Particles, SkidMarks } from './fx.js';
 import { setupTouch, isTouchDevice } from './touch.js';
 import { Wildlife } from './wildlife.js';
 import { Traffic } from './traffic.js';
-import { UI, loadSettings, saveSettings, timeFlowRate } from './ui.js';
+import { installDevTools } from './devtools.js';
+import { UI, loadSettings, saveSettings, timeFlowRate, fmt12, toggleFullscreen } from './ui.js';
 import { clamp } from './noise.js';
 
 const params = new URLSearchParams(location.search);
@@ -188,6 +189,7 @@ class Game {
     this.hudEl = $('hud');
     this.loop = this.loop.bind(this);
     window.__game = this;
+    if (import.meta.env.DEV) installDevTools(this);
     window.__snap = async (name = 'shot') => { this.composer.render(); const url = this.canvas.toDataURL('image/png'); await fetch('/__save?name=' + name, { method: 'POST', body: url }); return 'saved ' + name; };
     this.frame(0.0001);
     this.composer.render();          // warm up shaders
@@ -286,11 +288,12 @@ class Game {
         case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': this.vehicle.setGear(+e.code.slice(5)); break;
         case 'KeyR': this.recover(); break;
         case 'KeyH': this.settings.showHud = !this.settings.showHud; this.hudEl.classList.toggle('hidden'); $('topbar').classList.toggle('hidden'); this.saveSettings(); break;
-        case 'KeyT': this.setTimeOfDay(Math.floor(this.hour + 1.5) % 24); this.toast(`Time ${String(Math.floor(this.hour)).padStart(2, '0')}:00`); break;
+        case 'KeyT': this.setTimeOfDay(Math.floor(this.hour + 1.5) % 24); this.toast('Time ' + fmt12(this.hour, false)); break;
+        case 'KeyF': if (e.shiftKey) { toggleFullscreen(); break; }
+          $('stats').style.display = $('stats').style.display === 'block' ? 'none' : 'block'; break;
         case 'KeyG': { const order = ['clear', 'partly', 'overcast', 'rain', 'storm', 'snow', 'fog']; this.setWeather(order[(order.indexOf(this.weather.name) + 1) % order.length]); break; }
         case 'KeyM': this.toast(this.audio.toggleMute() ? 'Muted' : 'Sound on'); break;
         case 'KeyN': this.toast(this.audio.toggleMusic() ? 'Music on' : 'Music off'); break;
-        case 'KeyF': $('stats').style.display = $('stats').style.display === 'block' ? 'none' : 'block'; break;
         case 'KeyK': { const ks = Object.keys(PAINTS); const i = (ks.indexOf(this.settings.paint) + 1) % ks.length; this.settings.paint = ks[i]; this.car.setPaint(PAINTS[ks[i]]); this.saveSettings(); this.toast('Paint: ' + ks[i]); break; }
       }
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -658,7 +661,7 @@ class Game {
       $('gearTxt').textContent = (this.auto ? 'AUTO · ' : v.manual ? 'MAN · ' : '') + (v.gear === -1 ? 'R' : v.gear === 0 ? 'N' : (!v.manual && Math.abs(v.fwdSpeed) < 0.3 && v.throttle < 0.05) ? 'N' : v.gear);
       $('rpmfill').style.width = clamp((v.rpm - 800) / 6000, 0, 1) * 100 + '%';
       const hh = Math.floor(this.hour), mm = Math.floor((this.hour - hh) * 60);
-      $('clock').innerHTML = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}<br><span style="opacity:.6">${(v.distance / 1000).toFixed(1)} km</span>`;
+      $('clock').innerHTML = `${fmt12(this.hour)}<br><span style="opacity:.6">${(v.distance / 1000).toFixed(1)} km</span>`;
       const st = $('stats');
       if (st.style.display === 'block') {
         const r = this.renderer.info.render;
