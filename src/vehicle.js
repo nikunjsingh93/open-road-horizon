@@ -106,7 +106,8 @@ export class Vehicle {
   // terrain / road height + surface at (x,z)
   ground(x, z, out) {
     const w = this.world;
-    const r = w.nearestHint(x, z, this.hint, this.ri);
+    let r = w.nearestHint(x, z, this.hint, this.ri);
+    if (r.d > 10) { const rn = w.nearest(x, z, this.ri); if (rn) r = rn; }     // far from the hinted stretch: use the true nearest road, exactly like the terrain mesh
     const nat = w.natural(x, z);
     const t = r.t, at = Math.abs(t);
     let h = w.shape(nat, x, z, r);

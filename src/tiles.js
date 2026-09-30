@@ -3,7 +3,7 @@ import { smoothstep } from './noise.js';
 import { makeWaterMaterial } from './water.js';
 
 const N = 32;            // quads per tile side
-const MIN_SIZE = 256;
+const MIN_SIZE = 64;
 const ROOT = 8192;
 
 // Quadtree LOD terrain (world-aligned tiles) for everything beyond the near road strip.

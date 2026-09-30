@@ -193,7 +193,7 @@ export class GroundCover {
     const dist = new Float32Array(17 * 17);
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
       const x = ox + i * 2, z = oz + j * 2;
-      H[j * 17 + i] = w.heightRI(x, z); dist[j * 17 + i] = Math.min(w._tmp.d, w.tdist < 2.6 ? -1 : 999);
+      H[j * 17 + i] = w.heightRI(x, z); dist[j * 17 + i] = Math.min(w._tmp.d, w.tdist < 3.6 ? -1 : 999);
     }
     const sample = (x, z) => {
       const fx = (x - ox) / 2, fz = (z - oz) / 2;

@@ -24,3 +24,56 @@ export function installDevTools(game) {
   };
   window.__trailAll = async (max = 100) => { const out = []; for (let i = 0; i < g.world.trails.length; i++) out.push(await window.__trailTest(i, max)); return out; };
 }
+
+// Compares the rendered terrain (near strip + far tiles) with the surface the physics uses, on a grid around the car.
+import * as THREE from 'three';
+export function installSurfaceTest(game) {
+  const g = game;
+  window.__surfaceTest = (radius = 90, step = 6, layer = 'all') => {
+    const v = g.vehicle, meshes = [];
+    if (layer !== 'far') g.ground.group.traverse(o => { if (o.isMesh && o.material === g.ground.terrainMat) meshes.push(o); });
+    if (layer !== 'near') g.far.group.traverse(o => { if (o.isMesh && o.material !== g.far.waterMat) meshes.push(o); });
+    const rc = new THREE.Raycaster(), dir = new THREE.Vector3(0, -1, 0), o = new THREE.Vector3();
+    const gh = { h: 0, surf: 0 };
+    let n = 0, bad = 0, worst = 0, wx = 0, wz = 0, sum = 0;
+    for (let dx = -radius; dx <= radius; dx += step) for (let dz = -radius; dz <= radius; dz += step) {
+      const x = v.pos.x + dx, z = v.pos.z + dz;
+      o.set(x, v.pos.y + 400, z); rc.set(o, dir);
+      let top = -1e9;
+      for (const m of meshes) { const h = rc.intersectObject(m, false); if (h.length && h[0].point.y > top) top = h[0].point.y; }
+      if (top < -1e8) continue;
+      const p = v.ground(x, z, gh);
+      const d = top - p;          // > 0: the visible surface is above what the car drives on (car looks buried)
+      n++; sum += Math.abs(d);
+      if (Math.abs(d) > 0.35) bad++;
+      if (Math.abs(d) > Math.abs(worst)) { worst = d; wx = dx; wz = dz; }
+    }
+    return { samples: n, mismatched: bad, meanAbs: +(sum / n).toFixed(3), worst: +worst.toFixed(2), at: [wx, wz] };
+  };
+}
+
+// Drives off-road and reports how deep the wheels sit below the *rendered* terrain surface (positive = buried).
+export function installBuriedTest(game) {
+  const g = game;
+  window.__buriedTest = (s0, key, secs = 12) => {
+    const v = g.vehicle, meshes = [];
+    const collect = () => { meshes.length = 0; g.ground.group.traverse(o => { if (o.isMesh && o.material === g.ground.terrainMat) meshes.push(o); }); g.far.group.traverse(o => { if (o.isMesh && o.material !== g.far.waterMat) meshes.push(o); }); };
+    const rc = new THREE.Raycaster(), dir = new THREE.Vector3(0, -1, 0), o = new THREE.Vector3();
+    const top = (x, z, y) => { o.set(x, y + 30, z); rc.set(o, dir); let t = -1e9; for (const m of meshes) { const h = rc.intersectObject(m, false); if (h.length && h[0].point.y > t) t = h[0].point.y; } return t; };
+    g.teleport(s0, 50); g.keys = {}; g.steerSmooth = 0; v.omega.set(0, 0, 0); g.advance(0.5);
+    g.keys = { KeyW: true, [key]: true };
+    let worst = 0, sum = 0, n = 0, maxAir = 0;
+    for (let i = 0; i < secs * 4; i++) {
+      g.advance(0.25);
+      if (i % 4 === 0) collect();
+      for (const wh of v.wheels) {
+        const t = top(wh.hub.x, wh.hub.z, wh.hub.y); if (t < -1e8) continue;
+        const bottom = wh.hub.y - 0.335;
+        const buried = t - bottom;
+        worst = Math.max(worst, buried); maxAir = Math.max(maxAir, -buried); sum += Math.max(0, buried); n++;
+      }
+    }
+    g.keys = {};
+    return { worstBuried: +worst.toFixed(2), meanBuried: +(sum / n).toFixed(3), maxHover: +maxAir.toFixed(2), kmh: Math.round(v.speedKmh) };
+  };
+}

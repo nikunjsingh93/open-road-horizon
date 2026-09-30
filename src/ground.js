@@ -7,7 +7,7 @@ const CHUNK_S = 48;               // metres of road per strip chunk
 const ROWS = 24;                  // rows per chunk (2 m)
 // lateral columns (metres from centre) for the near terrain strip
 const T_COLS = (() => {
-  const half = [0, 1.2, 2.4, 3.6, 3.85, 4.4, 5.2, 6.2, 7.5, 9, 11, 13.5, 16.5, 20, 24, 29, 35, 41, 47];
+  const half = [0, 1.2, 2.4, 3.6, 3.85, 4.4, 5.2, 6.2, 7.5, 9, 10.5, 12, 13.5, 15, 17, 19, 21, 23.5, 26, 28.5, 31, 34, 37, 40, 43.5, 47];
   const cols = [];
   for (let i = half.length - 1; i > 0; i--) cols.push(-half[i]);
   for (let i = 0; i < half.length; i++) cols.push(half[i]);
@@ -111,16 +111,17 @@ export function makeTerrainMaterial() {
             c = mix(c, gravel, shoulder*(1.-rk*.5));
           }
           // off-road side tracks: two dirt ruts with a grassy crown and a worn edge
-          if (tdst < 4.2) {
+          if (tdst < 4.6) {
             float e = tdst + (vnoise(p*.9) - .5) * .55;
-            float track = 1.0 - smoothstep(1.7, 2.5, e);
-            float rut = exp(-pow((tdst - 0.95) * 2.4, 2.));
-            vec3 tcol = mix(vec3(.15,.11,.07), vec3(.095,.07,.045), rut * .7) * (.75 + .5*vnoise(p*7.) + .3*g2);
-            float crown = (1.0 - smoothstep(.15, .7, tdst)) * .55;
-            tcol = mix(tcol, c * 1.15, crown);
-            c = mix(c, tcol, track * (1.0 - rk * .5));
-            float edge = (1.0 - smoothstep(2.3, 3.6, e)) * .28;
-            c = mix(c, dirt, edge * (1.0 - track));
+            float track = 1.0 - smoothstep(2.3, 3.0, e);
+            float rut = exp(-pow((tdst - 1.15) * 1.9, 2.));
+            // packed brown dirt: lighter dusty centre, darker worn wheel ruts, loose stones
+            vec3 tcol = mix(vec3(.27,.175,.095), vec3(.19,.115,.06), rut * .8) * (.8 + .4*vnoise(p*6.) + .25*g2);
+            tcol *= 0.9 + 0.2*vnoise(p*23.);
+            tcol = mix(tcol, vec3(.36,.3,.23), step(.93, vnoise(p*17.)) * .5);
+            c = mix(c, tcol, track);
+            float edge = (1.0 - smoothstep(3.0, 4.2, e)) * .4;
+            c = mix(c, dirt * 1.3, edge * (1.0 - track));
           }
           float fringe = smoothstep(5.0, 6.2, d) * (1.0 - smoothstep(6.2, 8.5, d));
           c = mix(c, dirt*1.1, fringe*.22);
@@ -308,7 +309,7 @@ export class Ground {
         const x = c.x + cx * t, z = c.z + cz * t;
         const nat = w.natural(x, z);
         const d = Math.abs(t);
-        const h = w.shape(nat, x, z, { d, y: c.y });
+        const h = w.heightRI(x, z);          // exactly the surface the physics drives on (nearest road, side tracks)
         pos[idx * 3] = x; pos[idx * 3 + 1] = h; pos[idx * 3 + 2] = z;
         info[idx * 4] = d; info[idx * 4 + 1] = w.forest(x, z); info[idx * 4 + 2] = Math.min(w.tdist, 30); info[idx * 4 + 3] = w.guideWeight(z);
         idx++;

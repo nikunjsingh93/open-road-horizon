@@ -443,14 +443,17 @@ export class World {
     return out.d < THASH * 1.4;
   }
 
-  _trailCarve(h, x, z) {
+  _trailCarve(h, x, z, roadD = 99) {
     const q = this._tq;
     if (!this.trailQuery(x, z, q)) { this.tdist = 99; return h; }
     this.tdist = q.d;
     const W = 2.4, blend = 3.4 + Math.min(1.7 * Math.abs(h - q.y), 16);
     const a = smoothstep(W, W + blend, q.d);
     const bed = q.y - 0.05 - 0.05 * smoothstep(1.6, 3.2, q.d);
-    return bed + (h - bed) * a;
+    const out = bed + (h - bed) * a;
+    // never disturb the main road's own bench: side tracks fade in with distance from the road
+    const k = smoothstep(4.5, 13, roadD);
+    return h + (out - h) * k;
   }
 
   // terrain height with the main road carved in but without side tracks (used to lay the tracks out)
@@ -463,7 +466,7 @@ export class World {
   // full terrain height at (x, z) given road info r (from nearest / nearestHint) - road carve first, then side tracks
   shape(nat, x, z, r) {
     let h = (!r || r.d > REACH) ? nat : this._carve(nat, r.y, r.d, x, z);
-    if (this.trailsOn && this.trails.length) h = this._trailCarve(h, x, z); else this.tdist = 99;
+    if (this.trailsOn && this.trails.length) h = this._trailCarve(h, x, z, r ? r.d : 99); else this.tdist = 99;
     return h;
   }
 

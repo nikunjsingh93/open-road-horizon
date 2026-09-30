@@ -20,7 +20,7 @@ import { Particles, SkidMarks } from './fx.js';
 import { setupTouch, isTouchDevice } from './touch.js';
 import { Wildlife } from './wildlife.js';
 import { Traffic } from './traffic.js';
-import { installDevTools } from './devtools.js';
+import { installDevTools, installSurfaceTest, installBuriedTest } from './devtools.js';
 import { UI, loadSettings, saveSettings, timeFlowRate, fmt12, toggleFullscreen } from './ui.js';
 import { clamp } from './noise.js';
 
@@ -189,7 +189,7 @@ class Game {
     this.hudEl = $('hud');
     this.loop = this.loop.bind(this);
     window.__game = this;
-    if (import.meta.env.DEV) installDevTools(this);
+    if (import.meta.env.DEV) { installDevTools(this); installSurfaceTest(this); installBuriedTest(this); }
     window.__snap = async (name = 'shot') => { this.composer.render(); const url = this.canvas.toDataURL('image/png'); await fetch('/__save?name=' + name, { method: 'POST', body: url }); return 'saved ' + name; };
     this.frame(0.0001);
     this.composer.render();          // warm up shaders
