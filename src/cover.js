@@ -193,7 +193,7 @@ export class GroundCover {
     const dist = new Float32Array(17 * 17);
     for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
       const x = ox + i * 2, z = oz + j * 2;
-      H[j * 17 + i] = w.heightRI(x, z); dist[j * 17 + i] = w._tmp.d;
+      H[j * 17 + i] = w.heightRI(x, z); dist[j * 17 + i] = Math.min(w._tmp.d, w.tdist < 2.6 ? -1 : 999);
     }
     const sample = (x, z) => {
       const fx = (x - ox) / 2, fz = (z - oz) / 2;
@@ -206,7 +206,8 @@ export class GroundCover {
     const forestC = w.forest(ox + CELL / 2, oz + CELL / 2);
     const season = this.season || 'summer';
     const winter = season === 'winter';
-    const tintMul = season === 'autumn' ? [1.8, 0.98, 0.3] : [1, 1, 1];
+    const spring = season === 'spring';
+    const tintMul = season === 'autumn' ? [1.8, 0.98, 0.3] : spring ? [0.9, 1.12, 0.62] : [1, 1, 1];
     const grassList = [], flowerList = [], tallList = [], rockList = [], bushList = [];
     const distToCam = Math.hypot(ox + CELL / 2 - this._cam.x, oz + CELL / 2 - this._cam.z);
     const nearC = distToCam < 46;
@@ -229,11 +230,11 @@ export class GroundCover {
       grassList.push(x, h - 0.02, z, s, rnd() * 6.283, tint, nl);
     }
     // flowers (meadow patches)
-    const nfl = (winter || season === 'autumn') ? 0 : Math.floor(CELL * CELL * 0.05);
+    const nfl = (winter || season === 'autumn') ? 0 : Math.floor(CELL * CELL * (spring ? 0.28 : 0.11));
     for (let k = 0; k < nfl; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const patch = w.noise.n2(x * 0.03 + 9, z * 0.03 - 4);
-      if (patch < 0.15) continue;
+      if (patch < (spring ? -0.25 : 0.05)) continue;
       const [h, d] = sample(x, z);
       if (d < 6 || h < w.waterY + 0.5) continue;
       if (w.forest(x, z) > 0.5) continue;
@@ -261,7 +262,7 @@ export class GroundCover {
       rockList.push(x, h - 0.06, z, (big ? 0.9 + rnd() * 1.2 : 0.14 + rnd() * 0.32), rnd() * 6.283, (rnd() * 5) | 0, 0.75 + rnd() * 0.4);
     }
     // bushes
-    const nb = Math.floor(CELL * CELL * 0.0035 * (0.25 + forestC));
+    const nb = Math.floor(CELL * CELL * 0.0075 * (0.4 + forestC));
     for (let k = 0; k < nb; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const [h, d] = sample(x, z);

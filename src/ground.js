@@ -49,6 +49,7 @@ export function makeTerrainMaterial() {
           vec3 rock   = vec3(0.30, 0.285, 0.26);
           vec3 litter = vec3(0.060, 0.090, 0.035);
           vec3 c = mix(grassA, grassB, smoothstep(.3,.7,macro + (meso-.5)*.6));
+          float tdst = vInfo.z;
           float dryN = vnoise(p*0.004+40.)*0.7 + vnoise(p*0.011+2.)*0.3;
           c = mix(c, dry, smoothstep(.55,.85, dryN)*(1.-forest*.7)*0.55);
           c = mix(c, litter, forest*.75);
@@ -95,6 +96,18 @@ export function makeTerrainMaterial() {
             vec3 gravel = vec3(0.20,0.185,0.16) * (0.7 + 0.6*vnoise(p*40.) + 0.5*g2);
             gravel *= 0.8 + 0.4*vnoise(p*3.);
             c = mix(c, gravel, shoulder*(1.-rk*.5));
+          }
+          // off-road side tracks: two dirt ruts with a grassy crown and a worn edge
+          if (tdst < 4.2) {
+            float e = tdst + (vnoise(p*.9) - .5) * .55;
+            float track = 1.0 - smoothstep(1.7, 2.5, e);
+            float rut = exp(-pow((tdst - 0.95) * 2.4, 2.));
+            vec3 tcol = mix(vec3(.15,.11,.07), vec3(.095,.07,.045), rut * .7) * (.75 + .5*vnoise(p*7.) + .3*g2);
+            float crown = (1.0 - smoothstep(.15, .7, tdst)) * .55;
+            tcol = mix(tcol, c * 1.15, crown);
+            c = mix(c, tcol, track * (1.0 - rk * .5));
+            float edge = (1.0 - smoothstep(2.3, 3.6, e)) * .28;
+            c = mix(c, dirt, edge * (1.0 - track));
           }
           float fringe = smoothstep(5.0, 6.2, d) * (1.0 - smoothstep(6.2, 8.5, d));
           c = mix(c, dirt*1.1, fringe*.22);
@@ -280,9 +293,9 @@ export class Ground {
         const x = c.x + cx * t, z = c.z + cz * t;
         const nat = w.natural(x, z);
         const d = Math.abs(t);
-        let h = w._carve(nat, c.y, d);
+        const h = w.shape(nat, x, z, { d, y: c.y });
         pos[idx * 3] = x; pos[idx * 3 + 1] = h; pos[idx * 3 + 2] = z;
-        info[idx * 4] = d; info[idx * 4 + 1] = w.forest(x, z); info[idx * 4 + 2] = 0; info[idx * 4 + 3] = 0;
+        info[idx * 4] = d; info[idx * 4 + 1] = w.forest(x, z); info[idx * 4 + 2] = Math.min(w.tdist, 30); info[idx * 4 + 3] = 0;
         idx++;
       }
     }

@@ -96,6 +96,7 @@ export class TreeScatter {
         if (r1 > dens) continue;
         const h = w.heightRI(x, z);
         const d = w._tmp.d;
+        if (w.tdist < 6.5) continue;                       // keep side tracks clear
         if (d < 8.0) continue;
         if (d < 26 && r3 > smoothstep(8, 26, d) * 0.85 + 0.15) continue;
         if (h < w.waterY + 0.9) continue;

@@ -109,8 +109,9 @@ export class Vehicle {
     const r = w.nearestHint(x, z, this.hint, this.ri);
     const nat = w.natural(x, z);
     const t = r.t, at = Math.abs(t);
-    let h = w._carve(nat, r.y, r.d);
+    let h = w.shape(nat, x, z, r);
     let surf = 2;
+    const td = w.tdist;
     const HW = ROAD_HALF + 0.12;
     if (at < HW) {
       const u = t / HW;
@@ -121,7 +122,7 @@ export class Vehicle {
       const hr = r.y + 0.005;
       h = hr + (h - hr) * k;          // small chamfer off the tarmac edge
       surf = 1;
-    } else if (at < 6.4) surf = 1;
+    } else if (at < 6.4 || td < 2.3) surf = 1;
     out.h = h; out.surf = surf;
     return h;
   }

@@ -1,10 +1,12 @@
 import { PAINTS } from './car.js';
+import { STYLES } from './terrain.js';
 
 export const DEFAULTS = {
   time: 16.8, timeFlow: 'slow', weather: 'clear', season: 'summer', paint: 'red', units: 'kmh', quality: 'high',
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
   viewDist: 1.0, grass: 1.0, showHud: true, shake: 1.0, mouse: 1.0,
   gearbox: 'auto', power: 1.0, grip: 1.0, tc: true,
+  worldStyle: 'meadows', curvy: 1.0, hilly: 1.0, trails: true, wildlife: true,
 };
 
 const KEY = 'openroad.settings.v1';
@@ -61,8 +63,17 @@ export class UI {
     slider('Time of day', 0, 24, 0.05, g.hour, (v) => { g.setTimeOfDay(v); }, fmtTime);
     seg('Time flow', [['off', 'Still'], ['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']], s.timeFlow, (k) => { s.timeFlow = k; g.saveSettings(); });
     seg('Weather', [['clear', 'Clear'], ['partly', 'Cloudy'], ['overcast', 'Overcast'], ['rain', 'Rain'], ['storm', 'Storm'], ['snow', 'Snow'], ['fog', 'Fog']], s.weather, (k) => { g.setWeather(k); });
-    seg('Season', [['summer', 'Summer'], ['autumn', 'Autumn'], ['winter', 'Winter']], s.season, (k) => { s.season = k; g.saveSettings(); location.reload(); });
-    seg('World seed', [['7', 'Alpine'], ['21', 'Lakes'], ['42', 'Highlands'], ['1337', 'Forest']], String(g.seed), (k) => { g.changeSeed(parseInt(k)); });
+    seg('Season', [['spring', 'Spring'], ['summer', 'Summer'], ['autumn', 'Autumn'], ['winter', 'Winter']], s.season, (k) => { s.season = k; g.saveSettings(); location.search = ''; });
+
+    sec('World');
+    seg('World style', Object.entries(STYLES).map(([k, v]) => [k, v.label]), s.worldStyle, (k) => { s.worldStyle = k; g.saveSettings(); location.search = ''; });
+    slider('Road curviness', 0.3, 2.2, 0.1, s.curvy, (v) => { s.curvy = v; g.reloadWorldSoon(); }, (v) => v.toFixed(1) + '×');
+    slider('Hills & mountains', 0.3, 2.5, 0.1, s.hilly, (v) => { s.hilly = v; g.reloadWorldSoon(); }, (v) => v.toFixed(1) + '×');
+    seg('Off-road side tracks', [['on', 'On'], ['off', 'Off']], s.trails !== false ? 'on' : 'off', (k) => { s.trails = k === 'on'; g.saveSettings(); location.search = ''; });
+    seg('Wildlife', [['on', 'On'], ['off', 'Off']], s.wildlife !== false ? 'on' : 'off', (k) => { s.wildlife = k === 'on'; g.saveSettings(); if (g.wildlife) g.wildlife.setEnabled(s.wildlife); });
+    const nw = h('<div class="row"><label>Random world <span style="opacity:.5">(seed ' + g.seed + ')</span></label><button class="btn">Generate new world</button></div>');
+    nw.querySelector('button').onclick = () => g.randomWorld();
+    grid.appendChild(nw);
 
     sec('Car');
     const sw = h('<div class="row"><label>Paint</label><div class="sw"></div></div>');

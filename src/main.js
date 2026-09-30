@@ -18,6 +18,7 @@ import { Roadside } from './roadside.js';
 import { AudioEngine } from './audio.js';
 import { Particles, SkidMarks } from './fx.js';
 import { setupTouch, isTouchDevice } from './touch.js';
+import { Wildlife } from './wildlife.js';
 import { UI, loadSettings, saveSettings, timeFlowRate } from './ui.js';
 import { clamp } from './noise.js';
 
@@ -43,6 +44,9 @@ class Game {
     if (params.get('cam')) S.camera = params.get('cam');
     if (params.get('flow')) S.timeFlow = params.get('flow');
     if (params.get('season')) S.season = params.get('season');
+    if (params.get('style')) S.worldStyle = params.get('style');
+    if (params.get('curvy')) S.curvy = parseFloat(params.get('curvy'));
+    if (params.get('hilly')) S.hilly = parseFloat(params.get('hilly'));
     this.seed = params.get('seed') ? parseInt(params.get('seed')) : (S.seed || 7);
     const QP = this.QP = QUALITY[S.quality] || QUALITY.high;
     status('Preparing renderer', 4); await tick();
@@ -67,7 +71,7 @@ class Game {
 
     // --- world & sky ---
     status('Generating world', 10); await tick();
-    this.world = new World(this.seed);
+    this.world = new World(this.seed, { style: S.worldStyle, curvy: S.curvy, hilly: S.hilly, trails: S.trails });
     this.world.ensure(9500);
     this.sky = new Sky(scene);
     this.pmrem = new THREE.PMREMGenerator(renderer);
@@ -100,6 +104,7 @@ class Game {
       status('Planting meadows', 46); await tick();
       this.cover = new GroundCover(scene, this.world, this.trees.lib, { radius: QP.cover, density: QP.grass * S.grass, season: S.season });
     }
+    this.wildlife = new Wildlife(scene, this.world, { enabled: S.wildlife !== false && QP !== QUALITY.low, radius: QP.cover * 2.3 });
 
     // --- vehicle ---
     status('Building the car', 56); await tick();
@@ -116,7 +121,7 @@ class Game {
     this._qinv = new THREE.Quaternion();
 
     // --- effects ---
-    U.uSeason.value = { summer: 0, autumn: 1, winter: 2 }[S.season] ?? 0;
+    U.uSeason.value = { spring: 0, summer: 0, autumn: 1, winter: 2 }[S.season] ?? 0;
     this.weather = new Weather(scene, this.sky, this);
     this.weather.seasonSnow = S.season === 'winter' ? 0.92 : 0;
     this.weather.set(S.weather);
@@ -218,6 +223,9 @@ class Game {
   setTimeOfDay(h) { this.setTime(h); this.settings.time = this.hour; this.saveSettings(); }
   setWeather(k) { this.settings.weather = k; this.weather.set(k); this.saveSettings(); this.toast('Weather: ' + k); }
   changeSeed(k) { this.settings.seed = k; this.saveSettings(); location.search = ''; }
+  // world-shaping options rebuild the world, so apply them after a short pause (sliders fire continuously)
+  reloadWorldSoon() { clearTimeout(this._rw); this.saveSettings(); this._rw = setTimeout(() => { location.search = ''; }, 900); }
+  randomWorld() { this.changeSeed(1 + Math.floor(Math.random() * 99999)); }
   applyRenderScale() { this.resize(); }
   applyViewDistance() {
     const v = this.settings.viewDist;
@@ -382,7 +390,7 @@ class Game {
     let worst = 0;
     for (const off of [-1.45, 0, 1.45]) {
       const cx = v.pos.x + v.fwd.x * off, cz = v.pos.z + v.fwd.z * off;
-      if (!this.trees.collide(cx, cz, 0.95, hit)) continue;
+      if (!this.trees.collide(cx, cz, 0.95, hit) && !(this.wildlife && this.wildlife.enabled && this.wildlife.collide(cx, cz, 0.95, hit))) continue;
       v.pos.x += hit.nx * hit.pen; v.pos.z += hit.nz * hit.pen;
       const vn = v.vel.x * hit.nx + v.vel.z * hit.nz;
       if (vn < 0) {
@@ -588,6 +596,10 @@ class Game {
     this.roadside.update(this.vehicle.s);
     this.far.update(this.camera.position, 3);
     if (this.trees) { this.trees.update(this.camera.position, 1); this.cover.update(this.camera.position, 1); }
+    if (this.wildlife && this.wildlife.enabled) {
+      this.wildlife.setDay(clamp(this.sky.sunDir.y * 5 + 0.3, 0, 1) * (1 - this.weather.state.overcast * 0.4), U.uFogA.value);
+      this.wildlife.update(this.camera.position, this.paused ? 0 : dt, this.time, this.vehicle);
+    }
     this.sky.mesh.position.copy(this.camera.position);
     const g = this.grade.uniforms;
     g.uTime.value = this.time;

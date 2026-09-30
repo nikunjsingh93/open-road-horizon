@@ -130,6 +130,11 @@ export const SPECIES_LIST = Object.keys(SPECIES);
 // per-season instance tints (multiplied with the atlas colours)
 export function tintsFor(name, season) {
   const S = SPECIES[name];
+  if (season === 'spring') {
+    if (name === 'oak') return [[0.78, 1.0, 0.5], [0.92, 1.0, 0.62], [1.0, 0.86, 0.9], [0.74, 0.96, 0.46], [1.0, 0.92, 0.95]];   // fresh leaves + blossom
+    if (name === 'birch') return [[0.95, 1.0, 0.6], [0.85, 1.0, 0.55], [1.0, 0.98, 0.78]];
+    return [[0.68, 0.9, 0.62], [0.6, 0.84, 0.56], [0.74, 0.96, 0.66]];
+  }
   if (season === 'autumn') {
     if (name === 'oak') return [[1.0, 0.85, 0.7], [1.0, 0.72, 0.55], [0.95, 0.95, 0.75], [1.0, 0.62, 0.5], [0.8, 0.85, 0.6]];
     if (name === 'birch') return [[1.0, 0.95, 0.7], [1.0, 0.85, 0.6], [0.95, 1.0, 0.7]];
