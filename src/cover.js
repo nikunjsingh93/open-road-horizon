@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32, hash2, smoothstep, clamp, Noise } from './noise.js';
-import { patchMaterial } from './gfx.js';
+import { patchMaterial, LITE } from './gfx.js';
 import { windPatch, atlasRect, remapUV } from './foliage.js';
 import { GeoBuilder } from './trees.js';
 import * as TX from './textures.js';
@@ -230,7 +230,7 @@ export class GroundCover {
       grassList.push(x, h - 0.02, z, s, rnd() * 6.283, tint, nl);
     }
     // flowers (meadow patches)
-    const nfl = (winter || season === 'autumn') ? 0 : Math.floor(CELL * CELL * (spring ? 0.28 : 0.11));
+    const nfl = (winter || season === 'autumn' || LITE.on) ? 0 : Math.floor(CELL * CELL * (spring ? 0.28 : 0.11));
     for (let k = 0; k < nfl; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const patch = w.noise.n2(x * 0.03 + 9, z * 0.03 - 4);
@@ -241,7 +241,7 @@ export class GroundCover {
       flowerList.push(x, h - 0.02, z, 0.6 + rnd() * 0.5, rnd() * 6.283);
     }
     // tall grass tufts along fields
-    const ntall = winter ? 0 : Math.floor(CELL * CELL * 0.06);
+    const ntall = (winter || LITE.on) ? 0 : Math.floor(CELL * CELL * 0.06);
     for (let k = 0; k < ntall; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const [h, d] = sample(x, z);

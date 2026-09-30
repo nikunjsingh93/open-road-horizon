@@ -106,3 +106,12 @@ The first visit picks a preset from the device (phones, tablets, ≤ 4 cores, �
 settings). Low renders about 10× fewer triangles than High: no dynamic shadows (a soft blob under the car), half the trees drawn with the cheap
 LOD only, coarse far terrain, no god rays / bloom / MSAA and a lower resolution. Dynamic resolution runs on every preset, and if a device is still
 below ~28 fps at the lowest resolution the game sheds shadows, then vegetation and view distance by itself.
+
+**Low quality** uses a separate light-weight render path aimed at weak phones (e.g. Helio G100 / Mali): direct rendering with no post-processing target, no
+image based lighting or shadow maps (one sun + a hemisphere fill), a sky whose atmosphere is computed per vertex with a single cloud texture, and cheap
+terrain / road / water shaders, with ~a quarter of the trees and very little grass. Resolution is limited by a ~0.8 MP pixel budget instead of a tiny fixed scale.
+
+## Install as an app (PWA)
+
+Open the game in Chrome / Edge / Safari and choose **Install app** / **Add to Home Screen**. After the first load it works offline
+(a service worker caches the game and the car model). It starts full-screen in landscape.

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { U, GLSL_NOISE, patchMaterial } from './gfx.js';
+import { U, GLSL_NOISE, patchMaterial, LITE } from './gfx.js';
 import { smoothstep, clamp } from './noise.js';
 import { ROAD_HALF, DS } from './terrain.js';
 
@@ -26,6 +26,46 @@ export function makeTerrainMaterial() {
         attribute vec4 aInfo; varying vec4 vInfo; varying vec3 vWPos; varying vec3 vWNor;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vInfo = aInfo; vWPos = (modelMatrix * vec4(position,1.0)).xyz; vWNor = normal;`);
+    if (LITE.on) {
+      // cheap terrain: two value-noise lookups, everything else is flat colour mixing
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+        ${GLSL_NOISE}
+        varying vec4 vInfo; varying vec3 vWPos; varying vec3 vWNor;
+        uniform float uWet; uniform float uSeason; uniform float uSnow;
+        vec3 gCol; float gRough;
+        void terrainSurface(){
+          vec2 p = vWPos.xz;
+          vec3 N = normalize(vWNor);
+          float slope = 1.0 - N.y;
+          float alt = vWPos.y;
+          float n1 = vnoise(p*0.006) * 0.65 + vnoise(p*0.03) * 0.35;
+          float forest = vInfo.y;
+          vec3 c = mix(vec3(0.05,0.13,0.028), vec3(0.15,0.225,0.045), n1);
+          c = mix(c, vec3(0.34,0.30,0.13), smoothstep(.62,.85,n1) * (1.-forest*.7) * .5);
+          c = mix(c, vec3(0.06,0.09,0.035), forest*.7);
+          float aut = step(0.5, uSeason) * (1.0 - step(1.5, uSeason));
+          c = mix(c, vec3(0.2,0.15,0.04), aut*.7);
+          float gw = vInfo.w;
+          c = mix(c, mix(vec3(0.22,0.165,0.062), vec3(0.052,0.064,0.03), smoothstep(.4,.6,n1)), gw*.9*(1.-forest*.85));
+          float rk = smoothstep(0.30 - gw*.05, 0.5 - gw*.05, slope);
+          c = mix(c, vec3(0.2,0.185,0.16)*(.8+.4*n1), rk);
+          c = mix(c, vec3(.135,.125,.11), smoothstep(240.,460.,alt)*.5);
+          c = mix(c, vec3(.82,.85,.9), smoothstep(700.,770.,alt)*(1.-smoothstep(.34,.62,slope)));
+          float shoulder = 1.0 - smoothstep(4.25, 5.2, vInfo.x);
+          c = mix(c, vec3(.2,.185,.16), shoulder*(1.-rk*.5));
+          float tdst = vInfo.z;
+          if (tdst < 4.6) { float track = 1.0 - smoothstep(2.3, 3.0, tdst); c = mix(c, mix(vec3(.27,.175,.095), vec3(.19,.115,.06), exp(-pow((tdst-1.15)*1.9,2.))*.8), track); }
+          float sn = uSnow * (1.0 - smoothstep(0.32, 0.66, slope)) * (1.0 - shoulder);
+          c = mix(c, vec3(0.8,0.84,0.9), clamp(sn*1.15, 0., 1.));
+          gCol = c * (1.0 - 0.3*uWet); gRough = 0.95;
+        }`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+        terrainSurface(); diffuseColor.rgb = gCol;`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = gRough;`);
+      return;
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         ${GLSL_NOISE}
@@ -182,6 +222,35 @@ export function makeRoadMaterial() {
         attribute vec2 aRoad; varying vec2 vRoad; varying vec3 vWPos2; varying vec3 vWNor2;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vRoad = aRoad; vWPos2 = (modelMatrix * vec4(position,1.0)).xyz; vWNor2 = normal;`);
+    if (LITE.on) {
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+        ${GLSL_NOISE}
+        varying vec2 vRoad; varying vec3 vWPos2; varying vec3 vWNor2;
+        uniform float uWet; uniform float uSnow;
+        vec3 rCol; float rRough;
+        float aaLine(float d, float w, float aa){ return 1.0 - smoothstep(w - aa, w + aa, abs(d)); }
+        void roadSurface(){
+          float x = vRoad.x, s = vRoad.y;
+          vec3 base = vec3(0.105, 0.105, 0.108) * (0.86 + 0.28 * vnoise(vec2(x*0.5, s*0.12)));
+          float aa = max(length(fwidth(vec2(x, s))) * 0.7, 0.004);
+          float edge = aaLine(abs(x) - ${(ROAD_HALF - 0.36).toFixed(3)}, 0.075, aa);
+          float center = max(aaLine(x - 0.13, 0.062, aa), aaLine(x + 0.13, 0.062, aa));
+          float mask = clamp(edge + center, 0., 1.);
+          vec3 pcol = mix(vec3(.72,.72,.70), vec3(.70,.50,.05), clamp(center / max(mask, 1e-3), 0., 1.));
+          rCol = mix(base, pcol * 0.9, mask);
+          float ex = ${ROAD_HALF.toFixed(3)} - abs(x);
+          rCol = mix(rCol, vec3(.16,.13,.09), (1.0 - smoothstep(0., .55, ex)) * .5);
+          rCol = mix(rCol, vec3(0.78,0.82,0.88), clamp(uSnow * (1.0 - smoothstep(0., 1.1, ex)), 0., 1.) * (1.0 - mask*0.6));
+          rCol *= 1.0 - 0.3 * uWet;
+          rRough = 0.85;
+        }`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+        roadSurface(); diffuseColor.rgb = rCol;`)
+        .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        roughnessFactor = rRough * (1.0 - uWet*0.45);`);
+      return;
+    }
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         ${GLSL_NOISE}

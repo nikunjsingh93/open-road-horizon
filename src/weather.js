@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { U } from './gfx.js';
+import { U, LITE } from './gfx.js';
 import { clamp } from './noise.js';
 
 export const WEATHER_PRESETS = {
@@ -62,7 +62,7 @@ export class Weather {
     this.rainMat = new THREE.ShaderMaterial({
       uniforms: { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uVel: { value: new THREE.Vector3() }, uIntensity: { value: 0 }, uLen: { value: 0.6 }, uSnowMode: { value: 0 } },
       vertexShader: `float hash(vec2 p){ vec3 p3 = fract(vec3(p.xyx) * .1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }\n` + rainVert,
-      fragmentShader: `varying float vA; void main(){ gl_FragColor = vec4(vec3(0.75, 0.82, 0.9), vA); }`,
+      fragmentShader: `varying float vA; void main(){ gl_FragColor = vec4(vec3(0.75, 0.82, 0.9), vA); ${LITE.on ? '#include <colorspace_fragment>' : ''} }`,
       transparent: true, depthWrite: false, blending: THREE.NormalBlending,
     });
     // hash needs to be declared before use: rebuild vertex source

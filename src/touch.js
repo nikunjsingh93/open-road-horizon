@@ -18,8 +18,8 @@ body.touch #tctl { display: block; }
 .tb { position: absolute; pointer-events: auto; touch-action: none; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px;
   color: #eef3f8; font: 600 12px/1 'Segoe UI', system-ui, sans-serif; letter-spacing: 1.5px; text-transform: uppercase;
   background: rgba(14,18,24,.42); border: 1.5px solid rgba(255,255,255,.28); border-radius: 50%; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 4px 18px rgba(0,0,0,.25); transition: background .08s, transform .08s; }
-.tb.on { background: rgba(255,211,138,.55); border-color: #ffd38a; transform: scale(.94); }
+  box-shadow: 0 4px 18px rgba(0,0,0,.25); transition: background .08s; }
+.tb.on { background: rgba(255,211,138,.55); border-color: #ffd38a; }   /* pressed: colour only - buttons never change size */
 .tb svg { width: 38%; height: 38%; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
 .tb.pill { border-radius: 14px; }
 .tb.small { font-size: 10px; letter-spacing: 1px; }

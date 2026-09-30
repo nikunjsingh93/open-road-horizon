@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { U, GLSL_NOISE } from './gfx.js';
+import { U, GLSL_NOISE, LITE } from './gfx.js';
 
 // ------------------------------- CPU atmosphere (for light / fog colours) -------------------------------
 const RP = 6371e3, RA = 6471e3;
@@ -199,6 +199,81 @@ void main(){
   gl_FragColor = vec4(outc, 1.);
 }`;
 
+// ---- lite sky: the atmosphere is evaluated per *vertex* of the dome (a few hundred evaluations instead of ~one per pixel),
+// clouds are a single scrolling texture lookup ----
+const ATMO_GLSL = skyFrag.slice(skyFrag.indexOf('vec2 rsi('), skyFrag.indexOf('// --- clouds'));
+const skyLiteVert = /* glsl */`
+varying vec3 vDir; varying vec3 vCol;
+uniform vec3 uSunDir; uniform float uNight; uniform float uHaze;
+#define PI 3.14159265
+${ATMO_GLSL}
+void main(){
+  vDir = position;
+  vec3 rd = normalize(position), sd = normalize(uSunDir);
+  vec3 r0 = vec3(0., 6371e3 + 100., 0.);
+  vec3 kR = vec3(5.5e-6, 13.0e-6, 22.4e-6);
+  vec3 rdA = normalize(vec3(rd.x, max(rd.y, 0.0008), rd.z));
+  vec3 col = atmosphere(rdA, r0, sd, 22., 6371e3, 6471e3, kR, 21e-6, 8e3, 1.2e3, .758);
+  col = col / (1.0 + 0.10 * col);
+  col = mix(col, vec3(dot(col, vec3(.333))) * vec3(1., 1.02, 1.06), uHaze);
+  col += vec3(0.0026, 0.0046, 0.0085) * uNight * (1.0 + 1.5*exp(-abs(rd.y)*4.0));
+  vCol = col;
+  vec4 p = projectionMatrix * mat4(mat3(viewMatrix)) * vec4(position, 1.0);
+  gl_Position = p.xyww;
+}`;
+const skyLiteFrag = /* glsl */`
+precision highp float;
+varying vec3 vDir; varying vec3 vCol;
+uniform vec3 uSunDir; uniform vec3 uMoonDir; uniform float uTime; uniform float uCover; uniform vec3 uSunRad; uniform float uNight; uniform float uOvercast;
+uniform sampler2D tCloud;
+${GLSL_NOISE}
+void main(){
+  vec3 rd = normalize(vDir), sd = normalize(uSunDir);
+  vec3 outc = vCol;
+  if (uNight > 0.01 && rd.y > -0.02) {
+    vec3 p = rd * 150.; vec3 id = floor(p); vec3 f = fract(p) - .5;
+    float h = hash12(id.xy + id.z*37.1); vec2 o = hash22(id.xy*1.7 + id.z) - .5;
+    float st = (1.-smoothstep(.0,.05, length(f.xy*.5 + f.z*.2 - o*.4))) * step(.972, h);
+    outc += vec3(.8,.85,1.) * st * uNight * (0.3+1.2*h) * 1.6 * smoothstep(0., .1, rd.y);
+    float md = dot(rd, normalize(uMoonDir));
+    outc = mix(outc, vec3(1.2,1.2,1.15)*uNight, smoothstep(.9997, .99985, md) * step(0., uMoonDir.y+.05));
+    outc += vec3(.6,.7,.9) * pow(max(md,0.), 300.) * .25 * uNight;
+  }
+  if (rd.y > 0.02) {
+    vec2 uv = rd.xz / (rd.y + 0.22) * 0.55 + uTime * vec2(0.0035, 0.0012);
+    float d = texture2D(tCloud, uv).r;
+    d = smoothstep(1.0 - uCover, 1.0 - uCover + 0.32, d) * smoothstep(0.02, 0.25, rd.y);
+    vec3 cc = vCol * 0.55 + uSunRad * 0.5 + vec3(0.10);
+    cc = mix(cc, vec3(dot(cc, vec3(.333))) * 0.8, uOvercast);
+    outc = mix(outc, cc, d * 0.9);
+  }
+  float sdot = dot(rd, sd);
+  outc += uSunRad * smoothstep(.99995, .999985, sdot) * (1. - uOvercast) * 9.;
+  outc += uSunRad * pow(max(sdot, 0.), 220.) * 0.35 * (1. - uOvercast);
+  gl_FragColor = vec4(outc, 1.);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+function makeCloudTexture() {
+  const N = 256, data = new Uint8Array(N * N * 4);
+  const period = (o) => 4 * (1 << o);
+  let seed = 1337; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const grids = [0, 1, 2, 3].map((o) => { const p = period(o); const g = new Float32Array(p * p); for (let i = 0; i < g.length; i++) g[i] = rnd(); return g; });
+  const sm = (t) => t * t * (3 - 2 * t);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 0, a = 0.5, n = 0;
+    for (let o = 0; o < 4; o++) {
+      const p = period(o), fx = x / N * p, fy = y / N * p, ix = Math.floor(fx), iy = Math.floor(fy), tx = sm(fx - ix), ty = sm(fy - iy), g = grids[o];
+      const i00 = g[(iy % p) * p + (ix % p)], i10 = g[(iy % p) * p + ((ix + 1) % p)], i01 = g[((iy + 1) % p) * p + (ix % p)], i11 = g[((iy + 1) % p) * p + ((ix + 1) % p)];
+      v += a * ((i00 * (1 - tx) + i10 * tx) * (1 - ty) + (i01 * (1 - tx) + i11 * tx) * ty); n += a; a *= 0.5;
+    }
+    const c = Math.min(255, Math.max(0, Math.round(v / n * 255)));
+    const i = (y * N + x) * 4; data[i] = data[i + 1] = data[i + 2] = c; data[i + 3] = 255;
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = t.minFilter = THREE.LinearFilter; t.needsUpdate = true;
+  return t;
+}
+
 export class Sky {
   constructor(scene) {
     this.scene = scene;
@@ -213,11 +288,10 @@ export class Sky {
       uGround: { value: new THREE.Color(0.1, 0.12, 0.1) },
       uNight: { value: 0 }, uHaze: { value: 0.0 }, uOvercast: { value: 0 },
     };
-    this.mat = new THREE.ShaderMaterial({
-      uniforms: this.uniforms, vertexShader: skyVert, fragmentShader: skyFrag,
-      side: THREE.BackSide, depthWrite: false, depthTest: true,
-    });
-    this.geo = new THREE.SphereGeometry(1000, 48, 24);
+    this.mat = LITE.on
+      ? new THREE.ShaderMaterial({ uniforms: { ...this.uniforms, tCloud: { value: makeCloudTexture() } }, vertexShader: skyLiteVert, fragmentShader: skyLiteFrag, side: THREE.BackSide, depthWrite: false, depthTest: true })
+      : new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: skyVert, fragmentShader: skyFrag, side: THREE.BackSide, depthWrite: false, depthTest: true });
+    this.geo = LITE.on ? new THREE.SphereGeometry(1000, 40, 20) : new THREE.SphereGeometry(1000, 48, 24);
     this.mesh = new THREE.Mesh(this.geo, this.mat);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1000;
@@ -285,8 +359,8 @@ export class Sky {
   buildEnv(renderer, pmrem) {
     if (!this.envScene) {
       this.envScene = new THREE.Scene();
-      this.envMat = this.mat.clone();
-      this.envMat.uniforms = { ...this.uniforms, uEnv: { value: 1 } };
+      // the environment map (car reflections) always uses the full physical sky, it is only rebuilt when the time of day changes
+      this.envMat = new THREE.ShaderMaterial({ uniforms: { ...this.uniforms, uEnv: { value: 1 } }, vertexShader: skyVert, fragmentShader: skyFrag, side: THREE.BackSide, depthWrite: false, depthTest: true });
       this.envMesh = new THREE.Mesh(this.geo, this.envMat);
       this.envMesh.frustumCulled = false;
       this.envScene.add(this.envMesh);

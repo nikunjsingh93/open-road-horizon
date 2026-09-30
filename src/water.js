@@ -1,12 +1,13 @@
 import * as THREE from 'three';
-import { patchMaterial, GLSL_NOISE } from './gfx.js';
+import { patchMaterial, GLSL_NOISE, LITE } from './gfx.js';
 
 // Lake water: alpha / colour driven by per-vertex depth (waterY - terrainY), animated ripples via normal perturbation.
 export function makeWaterMaterial() {
   const m = new THREE.MeshStandardMaterial({
     color: 0xffffff, roughness: 0.06, metalness: 0.0, transparent: true, depthWrite: false, envMapIntensity: 1.25,
   });
-  m.userData.cacheKey = 'water';
+  m.userData.cacheKey = 'water' + (LITE.on ? 'L' : '');
+  if (LITE.on) m.defines = { LITE_WATER: '' };
   patchMaterial(m, (shader) => {
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
@@ -38,10 +39,17 @@ export function makeWaterMaterial() {
           float t = uTime;
           vec2 p = vWPosW.xz;
           vec3 n1 = vnoiseD(p * 0.35 + vec2(t * 0.12, t * 0.07));
+          #ifdef LITE_WATER
+          vec3 n2 = vec3(0.), n3 = vec3(0.);
+          #else
           vec3 n2 = vnoiseD(p * 1.3 + vec2(-t * 0.25, t * 0.18));
           vec3 n3 = vnoiseD(p * 3.7 + vec2(t * 0.5, -t * 0.4));
+          #endif
           float wfar = smoothstep(60., 420., length(vFogVP));
           vec2 g = n1.xy * (0.5 - 0.3 * wfar) + (n2.xy * 0.14 + n3.xy * 0.035) * (1.0 - wfar);
+          #ifdef LITE_WATER
+          g = n1.xy * 0.4;
+          #endif
           vec3 nw = normalize(vec3(-g.x * 0.5, 1.0, -g.y * 0.5));
           normal = normalize((viewMatrix * vec4(nw, 0.0)).xyz);
         }`)

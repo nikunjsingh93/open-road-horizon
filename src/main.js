@@ -5,7 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { CSM } from 'three/examples/jsm/csm/CSM.js';
 import { World } from './terrain.js';
-import { GradeShader, updateCommonUniforms, hooks, U, makeCSMSafe } from './gfx.js';
+import { GradeShader, updateCommonUniforms, hooks, U, makeCSMSafe, LITE } from './gfx.js';
 import { Sky } from './sky.js';
 import { Ground, makeTerrainMaterial } from './ground.js';
 import { FarTerrain } from './tiles.js';
@@ -34,7 +34,9 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 //   shadows: 0 = off, 1 = sun shadows on terrain / car only, 2 = trees cast shadows too
 //   keep: fraction of trees kept, tileMin: smallest far-terrain tile (m), rays: god rays, minScale: lowest dynamic resolution
 const QUALITY = {
-  low:    { pr: 0.75, msaa: 0, bloom: false, shadows: 0, shadow: 512,  shadowFar: 120, cover: 34,  nearR: 120, farR: 520,  grass: 0.9, keep: 0.5,  lod0: false, tileMin: 256, rays: false, minScale: 0.45, wild: false },
+  // 'lite' = the direct, cheap render path (see gfx.js LITE): the target for weak phones / integrated GPUs. Resolution is limited by a pixel
+  // budget (maxPix), not by a fixed tiny scale, so it stays sharp; everything else is made cheap instead.
+  low:    { lite: true, pr: 3, maxPix: 0.8e6, msaa: 0, bloom: false, shadows: 0, shadow: 512,  shadowFar: 120, cover: 26,  nearR: 100, farR: 380,  grass: 0.35, keep: 0.28, lod0: false, tileMin: 256, rays: false, minScale: 0.78, wild: false, traffic: false },
   medium: { pr: 0.9,  msaa: 0, bloom: false, shadows: 1, shadow: 1024, shadowFar: 160, cover: 60,  nearR: 200, farR: 800,  grass: 1.8, keep: 0.75, lod0: false, tileMin: 128, rays: false, minScale: 0.5,  wild: true },
   high:   { pr: 1.25, msaa: 4, bloom: true,  shadows: 2, shadow: 2048, shadowFar: 380, cover: 100, nearR: 300, farR: 1500, grass: 3.0, keep: 1,    lod0: true, lod0R: 75,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
   ultra:  { pr: 1.75, msaa: 4, bloom: true,  shadows: 2, shadow: 4096, shadowFar: 450, cover: 130, nearR: 380, farR: 1900, grass: 3.6, keep: 1,    lod0: true,  tileMin: 64,  rays: true,  minScale: 0.55, wild: true },
@@ -56,11 +58,12 @@ class Game {
     if (params.get('hilly')) S.hilly = parseFloat(params.get('hilly'));
     this.seed = params.get('seed') ? parseInt(params.get('seed')) : (S.seed || 7);
     const QP = this.QP = QUALITY[S.quality] || QUALITY.high;
+    LITE.on = !!QP.lite;
     status('Preparing renderer', 4); await tick();
 
     const canvas = $('c');
     this.canvas = canvas;
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: !!QP.lite, powerPreference: 'high-performance', stencil: false });   // (tile-based mobile GPUs get MSAA almost for free)
     this.renderer = renderer;
     this.dynScale = 1;
     this.dpr = Math.min(window.devicePixelRatio || 1, QP.pr);
@@ -68,9 +71,9 @@ class Game {
     this.pixelRatio = this.fixedPR ? parseFloat(params.get('pr')) : this.dpr * S.renderScale;
     renderer.setPixelRatio(this.pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight, false);
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !QP.lite;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMapping = QP.lite ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
 
     const scene = this.scene = new THREE.Scene();
     const camera = this.camera = new THREE.PerspectiveCamera(S.fov, window.innerWidth / window.innerHeight, 0.25, 14000);
@@ -87,14 +90,22 @@ class Game {
 
     // --- cascaded shadows (must exist before materials are created) ---
     this.shadowsOn = QP.shadows > 0;
-    this.csm = makeCSMSafe(() => new CSM({
+    if (QP.lite) {
+      // a plain directional sun + hemisphere fill instead of cascaded shadow maps and image based lighting
+      const sun = new THREE.DirectionalLight(0xffffff, 3); sun.position.set(0, 100, 0); scene.add(sun);
+      this.hemi = new THREE.HemisphereLight(0xbfd4ff, 0x4a5a30, 1.4); scene.add(this.hemi);
+      this.csm = { lights: [sun], lightDirection: new THREE.Vector3(0, -1, 0), fade: true, updateFrustums() {}, update() { sun.position.copy(this.lightDirection).multiplyScalar(-100); } };
+      hooks.csm = null;
+    } else this.csm = makeCSMSafe(() => new CSM({
       maxFar: QP.shadowFar, cascades: QP.shadows >= 2 ? 3 : 2, mode: 'practical', parent: scene, camera,
       shadowMapSize: QP.shadow, lightDirection: new THREE.Vector3(-0.4, -1, -0.3).normalize(),
       lightIntensity: 3, shadowBias: -0.0003, lightNear: 1, lightFar: 2500, lightMargin: 300,
     }));
+    if (!QP.lite) {
     this.csm.fade = true;
     this.csm.lights.forEach((l, i) => { l.shadow.normalBias = [0.03, 0.09, 0.25][i]; });
     hooks.csm = this.csm;
+    }
     this._csmFov = camera.fov; this._csmAspect = camera.aspect;
 
     status('Shaping terrain', 22); await tick();
@@ -138,7 +149,7 @@ class Game {
       this.blobHolder = new THREE.Group(); this.blobHolder.add(this.blob); scene.add(this.blobHolder);
     }
     this.traffic = new Traffic(scene, this.world, this.car, this.vehicle.wheels.map(w => ({ x: w.local.x, z: w.local.z })));
-    this.traffic.setEnabled(S.traffic !== false);
+    this.traffic.setEnabled(S.traffic !== false && QP.traffic !== false);
 
     // --- effects ---
     U.uSeason.value = { spring: 0, summer: 0, autumn: 1, winter: 2 }[S.season] ?? 0;
@@ -166,7 +177,7 @@ class Game {
     status('Compiling shaders', 70); await tick();
     const size = new THREE.Vector2(); renderer.getDrawingBufferSize(size);
     const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: QP.msaa });
-    this.composer = new EffectComposer(renderer, rt);
+    this.composer = QP.lite ? { passes: [], setPixelRatio() {}, setSize() {}, addPass() {}, render: () => renderer.render(scene, camera) } : new EffectComposer(renderer, rt);
     this.composer.setPixelRatio(1);
     this.composer.setSize(size.x, size.y);
     this.renderPass = new RenderPass(scene, camera);
@@ -206,6 +217,8 @@ class Game {
     this.hudEl = $('hud');
     this.loop = this.loop.bind(this);
     window.__game = this;
+    // PWA: install + offline (production builds only)
+    if (import.meta.env.PROD && 'serviceWorker' in navigator && !params.get('hold')) navigator.serviceWorker.register('./sw.js').catch(() => {});
     if (import.meta.env.DEV) { installDevTools(this); installSurfaceTest(this); installBuriedTest(this); installPerf(this); }
     window.__snap = async (name = 'shot') => { this.composer.render(); const url = this.canvas.toDataURL('image/png'); await fetch('/__save?name=' + name, { method: 'POST', body: url }); return 'saved ' + name; };
     this.frame(0.0001);
@@ -268,15 +281,19 @@ class Game {
 
   updateEnv() {
     const tex = this.sky.buildEnv(this.renderer, this.pmrem);
-    this.scene.environment = tex;
-    this.scene.environmentIntensity = 1.7;
+    if (!LITE.on) { this.scene.environment = tex; this.scene.environmentIntensity = 1.7; }
+    this._envBuilt = true;
     if (this.car) this.car.setEnv(tex);
     this.envDirty = false; this._envHour = this.hour; this._envOv = this.sky.overcast;
   }
 
   resize() {
     const w = window.innerWidth, h = window.innerHeight;
-    if (!this.fixedPR) this.pixelRatio = this.dpr * this.settings.renderScale * this.dynScale;
+    if (!this.fixedPR) {
+      let base = this.dpr;
+      if (LITE.on) base = Math.min(window.devicePixelRatio || 1, Math.sqrt(this.QP.maxPix / Math.max(1, w * h)));   // sharp, but never more than ~0.8 MP
+      this.pixelRatio = base * this.settings.renderScale * this.dynScale;
+    }
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
@@ -616,7 +633,8 @@ class Game {
       for (const l of this.csm.lights) { l.color.setRGB(0.78, 0.83, 0.92); l.intensity = 0.85 * md * (1 - this.sky.overcast * 0.5); l.castShadow = this.shadowsOn && md > 0.3; }
     }
     // soft grey sky-glow fill at night (scaled up as the sun drops, off in daylight)
-    this.scene.environmentIntensity = 1.7 + 0.75 * this.sky.night * (1 - this.sky.overcast * 0.4);
+    if (!LITE.on) this.scene.environmentIntensity = 1.7 + 0.75 * this.sky.night * (1 - this.sky.overcast * 0.4);
+    else this.updateHemi();
     const cam = this.camera;
     if (Math.abs(cam.fov - this._csmFov) > 0.4 || Math.abs(cam.aspect - this._csmAspect) > 0.01) {
       this._csmFov = cam.fov; this._csmAspect = cam.aspect; this.csm.updateFrustums();
@@ -657,7 +675,7 @@ class Game {
     this.weather.update(this.paused ? 0 : dt, this.camera, this.vehicle, this.time);
     this.updateTime(dt);
     this.updateLights();
-    if (this.envDirty && !this.scene.environment) this.updateEnv();
+    if (this.envDirty && !this._envBuilt) this.updateEnv();
     this.ground.update(this.vehicle.s, this.camera.position);
     this.roadside.update(this.vehicle.s);
     this.far.update(this.camera.position, 3);
@@ -686,12 +704,22 @@ class Game {
     });
   }
 
+  // ambient fill for the lite path (replaces the image based lighting)
+  updateHemi() {
+    const h = this.hemi, n = this.sky.night, up = Math.max(this.sky.sunDir.y, 0);
+    // sky fill from the horizon haze colour (already computed by the sky), ground bounce from the sun-lit terrain
+    h.color.copy(U.uFogA.value).multiplyScalar(1.15).add(new THREE.Color(0.02, 0.04, 0.09)).lerp(new THREE.Color(0.20, 0.23, 0.32), n * 0.85);
+    h.groundColor.copy(U.uFogA.value).multiplyScalar(0.55).add(U.uSunColor.value.clone().multiplyScalar(0.16 * up)).lerp(new THREE.Color(0.11, 0.12, 0.15), n * 0.85);
+    h.intensity = 1.5 + n * 0.5;
+  }
+
   exposure() {
     const el = this.sky.sunDir.y;
     let e = 0.72;
     if (el < 0.2) e = THREE.MathUtils.lerp(2.8, 0.72, clamp((el + 0.12) / 0.32, 0, 1));
     e *= 1 + this.sky.overcast * 0.55;
     this.grade.uniforms.uExposure.value = e * (this.expBoost || 1);
+    if (LITE.on) this.renderer.toneMappingExposure = e * (this.expBoost || 1) * 0.8;
   }
 
   updateSunScreen() {

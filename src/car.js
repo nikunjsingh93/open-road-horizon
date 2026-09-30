@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { hooks } from './gfx.js';
+import { hooks, LITE } from './gfx.js';
 
 export const PAINTS = {
   red: 0x9c0e16, blue: 0x0b2f6b, green: 0x0f3d2a, silver: 0x9a9da3, white: 0xdedbd2, black: 0x0c0c0e, orange: 0xc4470a, yellow: 0xd2a30a,
@@ -8,8 +8,9 @@ export const PAINTS = {
 
 function makeMaterials() {
   const m = {};
-  m.CarPaint = new THREE.MeshPhysicalMaterial({ color: PAINTS.red, metalness: 0.2, roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.18, envMapIntensity: 0.65 });
-  m.Glass = new THREE.MeshPhysicalMaterial({ color: 0x06090c, metalness: 0.0, roughness: 0.1, transparent: true, opacity: 0.66, envMapIntensity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  const Phys = LITE.on ? (o) => { const { clearcoat, clearcoatRoughness, ...rest } = o; return new THREE.MeshStandardMaterial(rest); } : (o) => new THREE.MeshPhysicalMaterial(o);
+  m.CarPaint = Phys({ color: PAINTS.red, metalness: 0.2, roughness: 0.42, clearcoat: 0.55, clearcoatRoughness: 0.18, envMapIntensity: 0.65 });
+  m.Glass = Phys({ color: 0x06090c, metalness: 0.0, roughness: 0.1, transparent: true, opacity: 0.66, envMapIntensity: 0.85, depthWrite: false, side: THREE.DoubleSide });
   m.BlackPlastic = new THREE.MeshStandardMaterial({ color: 0x0d0d0f, roughness: 0.55, metalness: 0.0 });
   m.Trim = new THREE.MeshStandardMaterial({ color: 0x1a1a1d, emissive: 0x0e0e10, roughness: 0.4, metalness: 0.1 });
   m.MirrorGlass = new THREE.MeshStandardMaterial({ color: 0x4a5560, roughness: 0.04, metalness: 0.85, envMapIntensity: 1.0, side: THREE.DoubleSide });
@@ -18,7 +19,7 @@ function makeMaterials() {
   m.RimAlloy = new THREE.MeshStandardMaterial({ color: 0xb9bbc0, roughness: 0.22, metalness: 1.0, envMapIntensity: 1.2 });
   m.BrakeDisc = new THREE.MeshStandardMaterial({ color: 0x55565a, roughness: 0.5, metalness: 1.0 });
   m.Caliper = new THREE.MeshStandardMaterial({ color: 0xb10d08, roughness: 0.4, metalness: 0.2 });
-  m.HeadLens = new THREE.MeshPhysicalMaterial({ color: 0xcdd8e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55, envMapIntensity: 1.5, depthWrite: false });
+  m.HeadLens = Phys({ color: 0xcdd8e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.55, envMapIntensity: 1.5, depthWrite: false });
   m.HeadLamp = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0xfff2dc, emissiveIntensity: 1.2, roughness: 0.3 });
   m.TailLamp = new THREE.MeshStandardMaterial({ color: 0x2a0000, emissive: 0xff0a05, emissiveIntensity: 0.9, roughness: 0.2 });
   m.WheelWell = new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.95 });

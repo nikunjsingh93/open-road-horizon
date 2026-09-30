@@ -3,6 +3,10 @@ import * as THREE from 'three';
 // ---------------------------------------------------------------------------
 // Shared uniforms (fog / atmosphere / wind) used by every patched material
 // ---------------------------------------------------------------------------
+// 'Lite' render path (Low quality): direct rendering (no post-processing target), no PBR image based lighting, no cascaded shadows,
+// cheap sky / terrain / road / water shaders. Set once, before any material is created.
+export const LITE = { on: false };
+
 export const U = {
   uFogA: { value: new THREE.Color(0.55, 0.65, 0.8) },   // fog colour away from the sun
   uFogB: { value: new THREE.Color(0.9, 0.8, 0.7) },     // fog colour towards the sun
