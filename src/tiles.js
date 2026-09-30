@@ -115,6 +115,7 @@ export class FarTerrain {
     const forest = new Float32Array((N + 1) * (N + 1));
     const dist = new Float32Array((N + 1) * (N + 1));
     const tdst = new Float32Array((N + 1) * (N + 1));
+    const gwt = new Float32Array((N + 1) * (N + 1));
     for (let j = -1; j <= N + 1; j++) {
       for (let i = -1; i <= N + 1; i++) {
         const x = x0 + i * step, z = z0 + j * step;
@@ -125,7 +126,7 @@ export class FarTerrain {
         H[(j + 1) * W + (i + 1)] = h;
         if (i >= 0 && j >= 0 && i <= N && j <= N) {
           forest[j * (N + 1) + i] = w.forest(x, z);
-          dist[j * (N + 1) + i] = d; tdst[j * (N + 1) + i] = w.tdist;
+          dist[j * (N + 1) + i] = d; tdst[j * (N + 1) + i] = w.tdist; gwt[j * (N + 1) + i] = w.guideWeight(z);
         }
       }
     }
@@ -146,7 +147,7 @@ export class FarTerrain {
         const dhdz = (H[(j + 2) * W + i + 1] - H[j * W + i + 1]) / (2 * step);
         const l = Math.hypot(dhdx, 1, dhdz);
         nor[v * 3] = -dhdx / l; nor[v * 3 + 1] = 1 / l; nor[v * 3 + 2] = -dhdz / l;
-        info[v * 4] = Math.min(dist[v], 60); info[v * 4 + 1] = forest[v]; info[v * 4 + 2] = Math.min(tdst[v], 30);
+        info[v * 4] = Math.min(dist[v], 60); info[v * 4 + 1] = forest[v]; info[v * 4 + 2] = Math.min(tdst[v], 30); info[v * 4 + 3] = gwt[v];
       }
     }
     // skirts (copy edge vertices lowered)
@@ -164,7 +165,7 @@ export class FarTerrain {
         const v = getIdx(k);
         pos[sv * 3] = pos[v * 3]; pos[sv * 3 + 1] = pos[v * 3 + 1] - skirt; pos[sv * 3 + 2] = pos[v * 3 + 2];
         nor[sv * 3] = nor[v * 3]; nor[sv * 3 + 1] = nor[v * 3 + 1]; nor[sv * 3 + 2] = nor[v * 3 + 2];
-        info[sv * 4] = info[v * 4]; info[sv * 4 + 1] = info[v * 4 + 1]; info[sv * 4 + 2] = info[v * 4 + 2];
+        info[sv * 4] = info[v * 4]; info[sv * 4 + 1] = info[v * 4 + 1]; info[sv * 4 + 2] = info[v * 4 + 2]; info[sv * 4 + 3] = info[v * 4 + 3];
         sv++;
       }
       for (let k = 0; k < N; k++) {

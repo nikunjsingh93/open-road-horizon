@@ -251,18 +251,19 @@ export class GroundCover {
       tallList.push(x, h - 0.03, z, 0.7 + rnd() * 0.9, rnd() * 6.283, 0.7 + rnd() * 0.4);
     }
     // rocks: near the road edge and on slopes
-    const nr = 2 + ((rnd() * 4) | 0);
+    const gw = w.guideWeight(oz + CELL / 2);
+    const nr = 2 + ((rnd() * 4) | 0) + Math.floor(gw * (7 + rnd() * 9));
     for (let k = 0; k < nr; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const [h, d] = sample(x, z);
       if (d < ROAD_HALF + 1.8 || h < w.waterY + 0.2) continue;
       const roc = w.noise2.n2(x * 0.01 + 3, z * 0.01 + 1);
-      if (roc < 0.05 && rnd() > 0.15) continue;
-      const big = rnd() < 0.12;
+      if (roc < 0.05 && rnd() > 0.15 + gw) continue;
+      const big = rnd() < 0.12 + 0.3 * gw;
       rockList.push(x, h - 0.06, z, (big ? 0.9 + rnd() * 1.2 : 0.14 + rnd() * 0.32), rnd() * 6.283, (rnd() * 5) | 0, 0.75 + rnd() * 0.4);
     }
     // bushes
-    const nb = Math.floor(CELL * CELL * 0.0075 * (0.4 + forestC));
+    const nb = Math.floor(CELL * CELL * 0.0075 * (0.4 + forestC + gw * 1.6));
     for (let k = 0; k < nb; k++) {
       const x = ox + rnd() * CELL, z = oz + rnd() * CELL;
       const [h, d] = sample(x, z);
@@ -317,7 +318,7 @@ export class GroundCover {
       inst(this.bushGeos[v], this.bushMat, sub, 7, (im, i, l, o) => {
         q.setFromAxisAngle(this.up, l[o + 4]); p.set(l[o], l[o + 1], l[o + 2]); sc.setScalar(l[o + 3]);
         m4.compose(p, q, sc); im.setMatrixAt(i, m4);
-        const t = l[o + 6]; col.setRGB(0.75 * t, 0.9 * t, 0.42 * t); im.setColorAt(i, col);
+        const t = l[o + 6]; col.setRGB((0.75 - 0.2 * gw) * t, (0.9 - 0.3 * gw) * t, (0.42 - 0.06 * gw) * t); im.setColorAt(i, col);
       }, true);
     }
     cell.grass = grassList.length / 7;

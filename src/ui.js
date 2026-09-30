@@ -6,7 +6,7 @@ export const DEFAULTS = {
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
   viewDist: 1.0, grass: 1.0, showHud: true, shake: 1.0, mouse: 1.0,
   gearbox: 'auto', power: 1.0, grip: 1.0, tc: true,
-  worldStyle: 'meadows', curvy: 1.0, hilly: 1.0, trails: true, wildlife: true,
+  worldKind: 'mix', curvy: 1.0, hilly: 1.0, trails: true, wildlife: true, traffic: true,
 };
 
 const KEY = 'openroad.settings.v1';
@@ -66,11 +66,12 @@ export class UI {
     seg('Season', [['spring', 'Spring'], ['summer', 'Summer'], ['autumn', 'Autumn'], ['winter', 'Winter']], s.season, (k) => { s.season = k; g.saveSettings(); location.search = ''; });
 
     sec('World');
-    seg('World style', Object.entries(STYLES).map(([k, v]) => [k, v.label]), s.worldStyle, (k) => { s.worldStyle = k; g.saveSettings(); location.search = ''; });
+    seg('World style', Object.entries(STYLES).map(([k, v]) => [k, v.label]), s.worldKind, (k) => { s.worldKind = k; g.saveSettings(); location.search = ''; });
     slider('Road curviness', 0.3, 2.2, 0.1, s.curvy, (v) => { s.curvy = v; g.reloadWorldSoon(); }, (v) => v.toFixed(1) + '×');
     slider('Hills & mountains', 0.3, 2.5, 0.1, s.hilly, (v) => { s.hilly = v; g.reloadWorldSoon(); }, (v) => v.toFixed(1) + '×');
     seg('Off-road side tracks', [['on', 'On'], ['off', 'Off']], s.trails !== false ? 'on' : 'off', (k) => { s.trails = k === 'on'; g.saveSettings(); location.search = ''; });
     seg('Wildlife', [['on', 'On'], ['off', 'Off']], s.wildlife !== false ? 'on' : 'off', (k) => { s.wildlife = k === 'on'; g.saveSettings(); if (g.wildlife) g.wildlife.setEnabled(s.wildlife); });
+    seg('Oncoming traffic', [['on', 'On'], ['off', 'Off']], s.traffic !== false ? 'on' : 'off', (k) => { s.traffic = k === 'on'; g.saveSettings(); if (g.traffic) g.traffic.setEnabled(s.traffic); });
     const nw = h('<div class="row"><label>Random world <span style="opacity:.5">(seed ' + g.seed + ')</span></label><button class="btn">Generate new world</button></div>');
     nw.querySelector('button').onclick = () => g.randomWorld();
     grid.appendChild(nw);

@@ -1,14 +1,19 @@
 import { Noise, smoothstep, clamp, mix, mulberry32, hash2 } from './noise.js';
 
 // World styles: each one reshapes the terrain around the road (the seed only changes the random layout).
+// 'mix' strings several of them together: a stretch of every style, blended into each other, a few km each.
+const FREE = { hill: 1, wallStart: 650, wallAmp: 1, lake: 1, forest: 0 };
 export const STYLES = {
+  mix:       { label: 'Mix (default)',  mix: true, ...FREE },
   meadows:   { label: 'Meadows',        hill: 1.0, wallStart: 650, wallAmp: 1.0,  lake: 1.0, forest: 0 },
   lakes:     { label: 'Lakes',          hill: 0.8, wallStart: 800, wallAmp: 0.7,  lake: 2.1, forest: 0 },
   highlands: { label: 'Highlands',      hill: 2.3, wallStart: 420, wallAmp: 1.2,  lake: 0.6, forest: 0 },
   forest:    { label: 'Deep forest',    hill: 0.9, wallStart: 850, wallAmp: 0.6,  lake: 0.8, forest: 0.34 },
-  mountain:  { label: 'Mountain road',  guide: 'mountain', hill: 0.8, wallStart: 1e9, wallAmp: 0, lake: 0, forest: 0 },
-  coast:     { label: 'Coastal cliffs', guide: 'coast',    hill: 0.8, wallStart: 1e9, wallAmp: 0, lake: 0, forest: -0.05 },
+  mountain:  { label: 'Mountain road',  guide: 'mountain', ...FREE },
+  coast:     { label: 'Coastal cliffs', guide: 'coast',    ...FREE, forest: -0.05 },
 };
+const ZONE_LEN = 3600;             // mix mode: metres per style zone
+const ZONE_TYPES = ['meadows', 'coast', 'lakes', 'mountain', 'highlands', 'forest'];
 const TRAIL_SPACING = 1150;        // a side track roughly every km
 const TRAIL_STEP = 9;              // metres between trail samples
 const THASH = 40;
@@ -25,8 +30,9 @@ const HASH = 64;                     // spatial hash cell (m)
 export class World {
   constructor(seed = 7, opts = {}) {
     this.seed = seed;
-    this.style = STYLES[opts.style] ? opts.style : 'meadows';
+    this.style = STYLES[opts.style] ? opts.style : 'mix';
     this.P = STYLES[this.style];
+    this._zseq = ['meadows']; this._zo = { wc: 0, wm: 0, P: this.P };
     this.curvy = opts.curvy ?? 1;
     this.hilly = opts.hilly ?? 1;
     this.trailsOn = opts.trails !== false;
@@ -46,58 +52,114 @@ export class World {
     this.ensure(1200);
   }
 
+  // ---- style zones ----
+  _zoneType(k) {
+    if (k <= 0) return 'meadows';
+    const q = this._zseq;
+    while (q.length <= k) {
+      const cyc = (q.length / ZONE_TYPES.length) | 0;
+      const rnd = mulberry32(hash2(cyc, 313, this.seed) * 4294967296 | 0);
+      const bag = ZONE_TYPES.slice();
+      for (let i = bag.length - 1; i > 0; i--) { const j = (rnd() * (i + 1)) | 0; [bag[i], bag[j]] = [bag[j], bag[i]]; }
+      if (bag[0] === q[q.length - 1]) [bag[0], bag[1]] = [bag[1], bag[0]];
+      for (const t of bag) q.push(t);
+    }
+    return q[k];
+  }
+
+  // style weights at a given z (the road runs towards -z): { wc: coast, wm: mountain, P: free-terrain parameters }
+  _zone(z) {
+    const o = this._zo;
+    if (!this.P.mix) {
+      o.wc = this.P.guide === 'coast' ? 1 : 0; o.wm = this.P.guide === 'mountain' ? 1 : 0; o.P = this.P;
+      return o;
+    }
+    const p = Math.max(0, -z / ZONE_LEN), b = Math.round(p);
+    const A = STYLES[this._zoneType(b - 1)], B = STYLES[this._zoneType(b)];
+    const tA = this._zoneType(b - 1), tB = this._zoneType(b);
+    const halfw = (A.guide || B.guide) ? 0.34 : 0.15;
+    const t = b <= 0 ? 1 : smoothstep(b - halfw, b + halfw, p);
+    o.wc = (tA === 'coast' ? 1 - t : 0) + (tB === 'coast' ? t : 0);
+    o.wm = (tA === 'mountain' ? 1 - t : 0) + (tB === 'mountain' ? t : 0);
+    const P = o.P === this.P || !o.P._mixed ? (o.P = { _mixed: true }) : o.P;
+    for (const k of ['hill', 'wallStart', 'wallAmp', 'lake', 'forest']) P[k] = A[k] + (B[k] - A[k]) * t;
+    return o;
+  }
+  guideWeight(z) { const o = this._zone(z); return o.wc + o.wm; }
+
   // ---- guided (road-hugging) styles: the road follows a guide curve and the landscape is built relative to it ----
   _guideRaw(z) {
-    const n = this.noise2, A = (this.P.guide === 'coast' ? 120 : 150) * this.curvy;
+    const n = this.noise2, A = 140 * this.curvy;
     return A * (0.62 * n.n1(z / 1000 + 40) + 0.28 * n.n1(z / 430 + 90) + 0.10 * n.n1(z / 175 + 17));
   }
   guideX(z) { if (this._g0 === undefined) this._g0 = this._guideRaw(0); return this._guideRaw(z) - this._g0; }
   guideSlope(z) { return (this.guideX(z + 1.5) - this.guideX(z - 1.5)) / 3; }
-  plateau(z) {
-    return this.P.guide === 'coast' ? 62 + 16 * this.noise.n1(z / 1300 + 5) * this.hilly : 120 + 55 * this.noise.n1(z / 1500 + 5) * this.hilly;
-  }
-  _guided(x, z) {
-    const n = this.noise, n2 = this.noise2;
-    const u = x - this.guideX(z) - 8;                       // + = right of the road, road sits at u = 0
-    const base = this.plateau(z) + 2.2 * this.hilly * n.n2(x * 0.02, z * 0.02) + 1.2 * n.n2(x * 0.09, z * 0.09);
-    if (this.P.guide === 'coast') {
-      // left: a sheer cliff into the sea; right: rock face and mountains
-      const rough = 3.5 * n.fbm(x * 0.03, z * 0.03, 3);
-      const cliff = smoothstep(4, -26, u + rough);
-      const sea = -36 + 4 * n.n2(x * 0.01, z * 0.01);
-      let h = base * (1 - cliff) + sea * cliff;
-      const m = smoothstep(14, 300, u);
-      if (m > 0) {
-        const r = n2.ridgedMF(x * 0.0016 + 3, z * 0.0016, 5);
-        h += m * (60 + 340 * Math.pow(r, 1.2) + 30 * n.fbm(x * 0.006, z * 0.006, 3)) * this.hilly * 0.9;
-      }
-      return h;
+
+  // Height offset (relative to the road bench) of a hillside flank. q > 0: metres up-slope from the road, q < 0: down-slope.
+  //  - up-slope: a gentle bench, then a broad ridged massif with gullies running down the fall line (no sheer wall next to the road)
+  //  - down-slope: the ground falls away in ledges and gullies to 'floor' (sea level for the coast), never a vertical face
+  _flank(x, z, q, E, upAmp, drop, dropDist, seaFloor) {
+    const n = this.noise, n2 = this.noise2, H = this.hilly;
+    if (q >= 0) {
+      const L = q;
+      const big = upAmp * Math.pow(smoothstep(6, 1050, L), 1.2);
+      const r = n2.ridgedMF(x * 0.0011 + 7, z * 0.0011 - 3, 5);
+      const massif = big * (0.55 + 0.9 * r);
+      const gul = 16 * (n2.ridgedMF(x * 0.0035 + 21, z * 0.022, 3) - 0.42) * smoothstep(25, 260, L) * H;
+      const bump = 26 * n.fbm(x * 0.006, z * 0.006, 3) * smoothstep(12, 160, L) * H + 6 * n.fbm(x * 0.035, z * 0.035, 3) * smoothstep(6, 70, L);
+      return massif + gul + bump;
     }
-    // mountain road: the high side and the drop side swap along the route, with flat saddles in between
-    const sg = Math.tanh(3.2 * n2.n1(z / 2100 + 60));
-    const uu = u * sg;
-    const rise = smoothstep(10, 300, uu), drop = smoothstep(4, -34, uu + 3 * n.fbm(x * 0.03, z * 0.03, 3));
+    const D = -q, t = D / dropDist;
+    const prof = Math.pow(smoothstep(0.02, 1, Math.min(t, 1)), 0.85);
+    let off = -drop * prof;
+    const mid = Math.sin(Math.PI * Math.min(t, 1));
+    off += mid * (5 * n.fbm(x * 0.035, z * 0.035, 3) + 11 * (n2.ridgedMF(x * 0.005 + 3, z * 0.03, 3) - 0.4));    // ledges + gullies
+    if (t > 1) off = -drop - (seaFloor ? 34 * smoothstep(1, 1.7, t) : 4 * n.fbm(x * 0.004, z * 0.004, 3) * Math.min(1, (t - 1) * 0.5));
+    return off;
+  }
+
+  _coast(x, z) {
+    const n = this.noise, H = this.hilly;
+    const E = 52 + 22 * n.n1(z / 1300 + 5) * H;
+    const u = x - this.guideX(z) - 8;                       // + = landward (right), the road sits at u = -8
+    const shoreD = 60 + 55 * (0.5 + 0.5 * n.n1(z / 380 + 3)) + 22 * n.n1(z / 95);
+    let h = E + this._flank(x, z, u + 8, E, (230 + 60 * H) * H, E + 1.5, shoreD, true);
+    // sea stacks and skerries just off the shore
+    if (u < -8) {
+      const t = (-u - 8) / shoreD;
+      if (t > 0.92 && t < 2.3) {
+        // broad, flat-topped rock shelves and skerries with ragged edges (not needles)
+        const sn = n.fbm(x * 0.011 + 9, z * 0.011 - 4, 3) + 0.12 * n.n2(x * 0.08, z * 0.08);
+        const blob = smoothstep(0.10, 0.24, sn);
+        const top = 3 + 9 * (0.5 + 0.5 * n.n2(x * 0.03, z * 0.03)) + 2.5 * n.n2(x * 0.15, z * 0.15);
+        const shelf = -9 + blob * (top + 9) * smoothstep(0.92, 1.15, t) * (1 - smoothstep(1.7, 2.3, t));
+        if (shelf > h) h = shelf;
+      }
+    }
+    return h + 1.0 * n.n2(x * 0.09, z * 0.09);
+  }
+
+  _mount(x, z) {
+    const n = this.noise, n2 = this.noise2, H = this.hilly;
+    const E = 105 + 55 * n.n1(z / 1500 + 5) * H;
+    const u = x - this.guideX(z) - 8;
+    const sg = Math.tanh(3.2 * n2.n1(z / 2100 + 60));       // which side is the mountain: swaps along the route
     const w8 = Math.pow(Math.abs(sg), 0.7);
-    const r = n2.ridgedMF(x * 0.0014 + 9, z * 0.0014, 5);
-    let h = base + w8 * rise * (70 + 320 * Math.pow(r, 1.15) + 25 * n.fbm(x * 0.006, z * 0.006, 3)) * this.hilly;
-    h -= w8 * drop * (95 + 40 * n.n1(z / 800));
-    // beyond the drop, the valley floor rolls away gently
-    h += (1 - w8) * 6 * n.fbm(x * 0.004, z * 0.004, 3);
-    return h;
+    const q = (u + 8) * Math.sign(sg || 1);
+    const drop = w8 * (85 + 35 * n.n1(z / 800));
+    return E + this._flank(x, z, q, E, w8 * (260 + 80 * H) * H, drop, 150 + 70 * n.n1(z / 500), false) * (0.35 + 0.65 * w8) + 1.0 * n.n2(x * 0.09, z * 0.09);
   }
 
   // ---- natural terrain (no road) ----
-  natural(x, z) {
-    if (this.P.guide) return this._guided(x, z);
-    const n = this.noise, n2 = this.noise2, P = this.P, H = this.hilly;
+  _free(x, z, P) {
+    const n = this.noise, n2 = this.noise2, H = this.hilly;
     // valley walls: the road wanders inside a broad valley, mountains on either side
     const xw = x + 280 * n2.n2(z * 0.0007, 3.3) + 90 * n2.n2(z * 0.003, 9.1);
     const wall = smoothstep(P.wallStart, P.wallStart + 850, Math.abs(xw));
     // rolling hills
     let h = (16 * P.hill * H) * n.fbm(x * 0.0011, z * 0.0011, 4) + (4.5 * H) * n.fbm(x * 0.0053 + 40, z * 0.0053, 3) + 0.6 * n.n2(x * 0.03, z * 0.03);
-    // mountains
+    // mountains: soft rolling massifs with faint ridge lines on top
     if (wall > 0) {
-      // domain-warped ridged multifractal on a slowly varying massif envelope: soft rolling massifs with faint ridge lines on top
       const wx = x + 170 * n.fbm(x * 0.0011 + 3, z * 0.0011, 3), wz = z + 170 * n.fbm(x * 0.0011 + 9, z * 0.0011 + 5, 3);
       const m = 0.5 + 0.5 * n2.fbm(wx * 0.00052 + 11, wz * 0.00052, 4);
       const r = n2.ridgedMF(wx * 0.0011 + 5, wz * 0.0011, 4);
@@ -111,11 +173,21 @@ export class World {
     return h;
   }
 
+  natural(x, z) {
+    const o = this._zone(z), wc = o.wc, wm = o.wm, wg = wc + wm;
+    if (wg >= 0.999) return (wc > 0 ? wc * this._coast(x, z) : 0) + (wm > 0 ? wm * this._mount(x, z) : 0);
+    const P = o.P;
+    const free = this._free(x, z, P);
+    if (wg <= 0.001) return free;
+    const g = (wc > 0 ? wc * this._coast(x, z) : 0) + (wm > 0 ? wm * this._mount(x, z) : 0);
+    return free * (1 - wg) + g;
+  }
+
   // forest density 0..1 (low frequency), used by shader & scatter
   forest(x, z) {
     const a = this.noise2.fbm(x * 0.0022 + 5, z * 0.0022 - 8, 3);
     const b = this.noise.n2(x * 0.012, z * 0.012) * 0.15;
-    return smoothstep(-0.12, 0.28, a + b + this.P.forest);
+    return smoothstep(-0.12, 0.28, a + b + this._zone(z).P.forest);
   }
 
   // ---- road generation ----
@@ -125,7 +197,7 @@ export class World {
     let k = Math.sign(a) * Math.pow(Math.abs(a), 1.25) * 1.9;
     k = clamp(k, -1, 1) / 105;
     k += 0.0022 * n.n1(s / 95 + 300);
-    return k * this.curvy * (this.P.guide ? 0.25 : 1);
+    return k * this.curvy * (1 - 0.75 * this._gw);
   }
 
   ensure(sMax) {
@@ -135,17 +207,20 @@ export class World {
       const s = i * DS;
       let th = this.th[i - 1];
       const x = this.xs[i - 1], z = this.zs[i - 1];
+      // the road starts hugging the guide curve ~1.5 km before a coast / mountain zone begins (so it is already in place)
+      const gw = this.guideWeight(z - 1500);
+      this._gw = gw;
       let k;
-      if (this.P.guide) {
-        // hug the guide curve (coast line / ridge line): heading follows its tangent, position error is pulled in quickly
-        const thT = Math.atan(-this.guideSlope(z));
-        const err = x - this.guideX(z);
-        const des = thT - clamp(err / 30, -1, 1) * 0.7;
-        k = this._kappa(s) + 0.085 * (des - th);
-      } else {
-        // steer gently back to the valley centre
+      {
         const des = -clamp(x / 520, -1, 1) * 0.95;
-        k = this._kappa(s) + 0.0026 * (des - th);
+        k = this._kappa(s) + 0.0026 * (des - th) * (1 - gw) - 0.0011 * th * (1 - gw);   // (weak pull to keep heading down the valley)
+        if (gw > 0.01) {
+          // hug the guide curve (coast line / ridge line): heading follows its tangent, position error is pulled in quickly
+          const thT = Math.atan(-this.guideSlope(z));
+          const err = x - this.guideX(z);
+          const desG = thT - clamp(err / 30, -1, 1) * 0.7;
+          k += 0.085 * (desG - th) * gw;
+        }
       }
       th += clamp(k, -0.05, 0.05) * DS;
       this.th[i] = th;
@@ -361,7 +436,7 @@ export class World {
 
   // full terrain height at (x, z) given road info r (from nearest / nearestHint) - road carve first, then side tracks
   shape(nat, x, z, r) {
-    let h = (!r || r.d > 64) ? nat : this._carve(nat, r.y, r.d);
+    let h = (!r || r.d > 64) ? nat : this._carve(nat, r.y, r.d, x, z);
     if (this.trailsOn && this.trails.length) h = this._trailCarve(h, x, z); else this.tdist = 99;
     return h;
   }
@@ -373,12 +448,27 @@ export class World {
     return this.shape(nat, x, z, r);
   }
 
-  _carve(nat, roadY, d) {
-    const blend = this.P.guide ? 8 + Math.min(0.25 * Math.abs(nat - roadY), 6) : 34 + Math.min(2.0 * Math.abs(nat - roadY), 28);
-    const a = smoothstep(5.2, blend, d);
-    // shoulder slightly lower than tarmac, then blends into natural terrain
+  // soft min / max (log-sum-exp) so clamped surfaces have no creases
+  static smin(a, b, k) { return Math.min(a, b) - k * Math.log(1 + Math.exp(-Math.abs(a - b) / k)); }
+  static smax(a, b, k) { return Math.max(a, b) + k * Math.log(1 + Math.exp(-Math.abs(a - b) / k)); }
+
+  _carve(nat, roadY, d, x, z) {
+    const o = this._zone(z), wg = o.wc + o.wm;
     const bed = roadY - 0.07 - 0.14 * smoothstep(4.1, 9, d);
-    return bed + (nat - bed) * a;
+    let free = nat;
+    if (wg < 0.999) {
+      const blend = 34 + Math.min(2.0 * Math.abs(nat - roadY), 28);
+      free = bed + (nat - bed) * smoothstep(5.2, blend, d);
+    }
+    if (wg <= 0.001) return free;
+    // guided styles: a level bench (shoulder + ditch), then the hillside is held between a cut slope and a fill / cliff slope
+    // so there is never a wall standing on the road edge
+    const rise = Math.max(0, d - 6.6);
+    const hi = bed + 0.75 * rise;
+    const lo = bed - (1.05 + 0.5 * (o.wc / wg)) * rise;
+    let h = World.smax(World.smin(nat, hi, 1.4), lo, 1.4);
+    h = bed + (h - bed) * smoothstep(4.8, 7.4, d);
+    return free * (1 - wg) + h * wg;
   }
 
   heightRI(x, z) { // also returns road info in this._tmp (valid until next call)

@@ -19,6 +19,7 @@ import { AudioEngine } from './audio.js';
 import { Particles, SkidMarks } from './fx.js';
 import { setupTouch, isTouchDevice } from './touch.js';
 import { Wildlife } from './wildlife.js';
+import { Traffic } from './traffic.js';
 import { UI, loadSettings, saveSettings, timeFlowRate } from './ui.js';
 import { clamp } from './noise.js';
 
@@ -44,7 +45,7 @@ class Game {
     if (params.get('cam')) S.camera = params.get('cam');
     if (params.get('flow')) S.timeFlow = params.get('flow');
     if (params.get('season')) S.season = params.get('season');
-    if (params.get('style')) S.worldStyle = params.get('style');
+    if (params.get('style')) S.worldKind = params.get('style');
     if (params.get('curvy')) S.curvy = parseFloat(params.get('curvy'));
     if (params.get('hilly')) S.hilly = parseFloat(params.get('hilly'));
     this.seed = params.get('seed') ? parseInt(params.get('seed')) : (S.seed || 7);
@@ -71,7 +72,7 @@ class Game {
 
     // --- world & sky ---
     status('Generating world', 10); await tick();
-    this.world = new World(this.seed, { style: S.worldStyle, curvy: S.curvy, hilly: S.hilly, trails: S.trails });
+    this.world = new World(this.seed, { style: S.worldKind, curvy: S.curvy, hilly: S.hilly, trails: S.trails });
     this.world.ensure(9500);
     this.sky = new Sky(scene);
     this.pmrem = new THREE.PMREMGenerator(renderer);
@@ -119,6 +120,8 @@ class Game {
     this.car.root.position.y = -SPEC.comH;
     scene.add(this.carRoot);
     this._qinv = new THREE.Quaternion();
+    this.traffic = new Traffic(scene, this.world, this.car, this.vehicle.wheels.map(w => ({ x: w.local.x, z: w.local.z })));
+    this.traffic.setEnabled(S.traffic !== false);
 
     // --- effects ---
     U.uSeason.value = { spring: 0, summer: 0, autumn: 1, winter: 2 }[S.season] ?? 0;
@@ -596,6 +599,7 @@ class Game {
     this.roadside.update(this.vehicle.s);
     this.far.update(this.camera.position, 3);
     if (this.trees) { this.trees.update(this.camera.position, 1); this.cover.update(this.camera.position, 1); }
+    if (this.traffic) this.traffic.update(this.paused ? 0 : dt, this.vehicle.s, this.vehicle.speed);
     if (this.wildlife && this.wildlife.enabled) {
       this.wildlife.setDay(clamp(this.sky.sunDir.y * 5 + 0.3, 0, 1) * (1 - this.weather.state.overcast * 0.4), U.uFogA.value);
       this.wildlife.update(this.camera.position, this.paused ? 0 : dt, this.time, this.vehicle);

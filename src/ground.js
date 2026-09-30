@@ -81,13 +81,26 @@ export function makeTerrainMaterial() {
           c = mix(c, dirt*(1.+g1), dp*.32);
           // mountains: bare rock takes over on ever gentler slopes with altitude, with vertical erosion streaks and sedimentary bands
           float mtn = smoothstep(160., 420., alt);
-          float rk = smoothstep(mix(.30, .17, mtn), mix(.48, .32, mtn), slope + (meso-.5)*.18);
+          float gw = vInfo.w;
+          if (gw > 0.02) {
+            // Big-Sur style hillsides: golden dry grass and dark chaparral scrub in patches, thin soil, bare rock only on the steepest faces
+            float sc = vnoise(p*0.028)*0.55 + vnoise(p*0.09)*0.3 + vnoise(p*0.4)*0.15;
+            vec3 gold = vec3(0.22,0.165,0.062) * (0.75 + 0.55*vnoise(p*0.7) + 0.4*g1);
+            vec3 scrub = vec3(0.052,0.064,0.030) * (0.7 + 0.8*vnoise(p*0.35));
+            vec3 gcol = mix(gold, scrub, smoothstep(0.28, 0.5, sc));
+            // grass streaks run down the fall line
+            gcol *= 0.9 + 0.2*vnoise(vec2(p.x*0.6 + p.y*0.15, p.y*3.0));
+            c = mix(c, gcol, gw * 0.92 * (1.0 - forest*0.85));
+          }
+          float rk = smoothstep(mix(.30, .17, mtn) - gw*0.05, mix(.48, .32, mtn) - gw*0.05, slope + (meso-.5)*.2);
           if (rk > 0.01) {
             float strata = 0.5 + 0.5*sin(alt*0.11 + vnoise(p*.004)*11.0 + vnoise(p*.02)*3.0);
             float streak = vnoise(vec2(p.x*.02 + p.y*.014, alt*.02)) * .5 + vnoise(vec2(p.x*.11 - p.y*.08, alt*.09)) * .3 + vnoise(p*.35) * .2;
             float crag = vnoise(p*.045) * .6 + vnoise(p*.13) * .4;
             vec3 rc = mix(vec3(.105,.098,.092), vec3(.27,.24,.205), strata*.25 + streak*.75) * (0.55 + 0.9*crag + g1*.5);
             rc = mix(rc, rc*vec3(.78,.74,.72), smoothstep(.5,.9, slope));
+            rc = mix(rc, rc*vec3(1.25,.98,.78) + vec3(.02,.008,0.), gw*.6);   // warm ochre sandstone / greywacke
+            rc *= 0.82 + 0.36*vnoise(vec2(p.x*0.9 - p.y*0.5, alt*0.6));      // layered ledges
             c = mix(c, rc, rk);
           }
           float d = vInfo.x;
@@ -295,7 +308,7 @@ export class Ground {
         const d = Math.abs(t);
         const h = w.shape(nat, x, z, { d, y: c.y });
         pos[idx * 3] = x; pos[idx * 3 + 1] = h; pos[idx * 3 + 2] = z;
-        info[idx * 4] = d; info[idx * 4 + 1] = w.forest(x, z); info[idx * 4 + 2] = Math.min(w.tdist, 30); info[idx * 4 + 3] = 0;
+        info[idx * 4] = d; info[idx * 4 + 1] = w.forest(x, z); info[idx * 4 + 2] = Math.min(w.tdist, 30); info[idx * 4 + 3] = w.guideWeight(z);
         idx++;
       }
     }

@@ -7,104 +7,185 @@ const V3 = THREE.Vector3;
 const CELL = 56;
 
 // ---------------------------------------------------------------------------
-// Low-poly animal models built from primitives (facing +Z, feet at y = 0). Vertex colour carries the coat,
-// the `aHead` attribute marks head/neck vertices so a vertex shader can nod them (grazing / looking up).
+// Animal models built from primitives (facing +Z, hooves at y = 0). Per-vertex data:
+//   color  - coat (with noise / patches)
+//   aHead  - 1 for head + neck (nods / grazes / bobs)
+//   aLeg   - (hipY, hipZ, gait phase, 1) for leg vertices: the vertex shader swings the leg about the hip and folds the
+//            lower leg at the knee, so animals really walk (diagonal walk for cattle & sheep, faster trot when fleeing)
 // ---------------------------------------------------------------------------
-function part(geo, m, color, head = 0, noise = 0.0, seed = 1) {
+function part(geo, m, color, head = 0, noise = 0.0, seed = 1, leg = null) {
   const g = geo.index ? geo.toNonIndexed() : geo.clone();
   g.applyMatrix4(m);
   const n = g.attributes.position.count;
-  const col = new Float32Array(n * 3), hd = new Float32Array(n).fill(head);
+  const col = new Float32Array(n * 3), hd = new Float32Array(n).fill(head), lg = new Float32Array(n * 4);
   const p = g.attributes.position;
   for (let i = 0; i < n; i++) {
     const h = Math.sin(p.getX(i) * 91.7 + p.getY(i) * 47.3 + p.getZ(i) * 61.1 + seed) * 43758.5453;
     const k = 1 + (h - Math.floor(h) - 0.5) * noise;
     col[i * 3] = color[0] * k; col[i * 3 + 1] = color[1] * k; col[i * 3 + 2] = color[2] * k;
+    if (leg) { lg[i * 4] = leg[0]; lg[i * 4 + 1] = leg[1]; lg[i * 4 + 2] = leg[2]; lg[i * 4 + 3] = 1; }
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('aHead', new THREE.BufferAttribute(hd, 1));
+  g.setAttribute('aLeg', new THREE.BufferAttribute(lg, 4));
   g.deleteAttribute('uv');
   return g;
 }
 const M = (px, py, pz, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) =>
   new THREE.Matrix4().compose(new V3(px, py, pz), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), new V3(sx, sy, sz));
-const sph = (w = 10, h = 7) => new THREE.SphereGeometry(1, w, h);
-const cyl = (r0, r1, h, s = 6) => new THREE.CylinderGeometry(r1, r0, h, s);
+const sph = (w = 12, h = 8) => new THREE.SphereGeometry(1, w, h);
+const cyl = (rTop, rBot, h, s = 7) => new THREE.CylinderGeometry(rTop, rBot, h, s);
 
-function sheepGeo() {
-  const wool = [0.55, 0.52, 0.46], dark = [0.09, 0.08, 0.07];
-  const g = [
-    part(sph(12, 8), M(0, 0.66, 0, 0.34, 0.33, 0.52), wool, 0, 0.35, 1),
-    part(sph(8, 6), M(0, 0.86, 0.05, 0.26, 0.2, 0.34), wool, 0, 0.3, 2),
-    part(sph(8, 6), M(0, 0.7, 0.68, 0.11, 0.13, 0.17), dark, 1),
-    part(sph(6, 4), M(-0.11, 0.78, 0.66, 0.07, 0.03, 0.05, 0, 0, 0.6), dark, 1),
-    part(sph(6, 4), M(0.11, 0.78, 0.66, 0.07, 0.03, 0.05, 0, 0, -0.6), dark, 1),
+// A leg: thigh (thick, tapering) + shank (thin) + hoof, hanging from the hip at (x, hipY, z). phase 0 or PI for the diagonal gait.
+function leg(x, z, hipY, rThigh, rShank, coat, hoof, phase, bulge = 1) {
+  const kneeY = hipY * 0.5;
+  return [
+    part(cyl(rThigh, rShank * 1.15, hipY - kneeY + 0.02, 7), M(x, (hipY + kneeY) / 2, z), coat, 0, 0.12, 7, [hipY, z, phase]),
+    part(sph(8, 6), M(x, kneeY, z, rShank * 1.35, rShank * 1.4, rShank * 1.35), coat, 0, 0, 1, [hipY, z, phase]),
+    part(cyl(rShank * 1.05, rShank * 0.8, kneeY - 0.05, 6), M(x, (kneeY - 0.05) / 2 + 0.05, z), coat, 0, 0.1, 3, [hipY, z, phase]),
+    part(cyl(rShank * 1.1, rShank * 1.35, 0.075, 6), M(x, 0.04, z + rShank * 0.15), hoof, 0, 0, 1, [hipY, z, phase]),
   ];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.push(part(cyl(0.045, 0.035, 0.42, 5), M(sx * 0.15, 0.21, sz * 0.27), dark));
-  return mergeGeometries(g);
 }
+const quad = (g, hipY, coat, hoof, halfW, zFront, zRear, rF, rH, sK) => {
+  for (const sx of [-1, 1]) {
+    g.push(...leg(sx * halfW, zFront, hipY, rF, sK, coat, hoof, sx > 0 ? 0 : Math.PI));
+    g.push(...leg(sx * halfW, zRear, hipY, rH, sK, coat, hoof, sx > 0 ? Math.PI : 0));
+  }
+};
+
 function cowGeo() {
-  const white = [0.58, 0.57, 0.54], black = [0.05, 0.045, 0.045], pink = [0.55, 0.37, 0.34];
-  const patch = (geo, m, seed, head = 0) => {
-    // Holstein patches: split the vertices by low-frequency noise into white / black
-    const g = part(geo, m, white, head, 0.1, seed);
+  const white = [0.50, 0.49, 0.46], black = [0.05, 0.045, 0.045], pink = [0.6, 0.4, 0.37], horn = [0.62, 0.58, 0.46];
+  const patchy = (geo, m, seed, head = 0) => {
+    const g = part(geo, m, white, head, 0.08, seed);
     const p = g.attributes.position, c = g.attributes.color;
     for (let i = 0; i < p.count; i++) {
-      const v = Math.sin(p.getX(i) * 5.3 + 1.7) * Math.cos(p.getZ(i) * 4.1 + seed) + Math.sin(p.getY(i) * 6.1 + p.getX(i) * 2.0);
-      if (v > 0.15) { c.setXYZ(i, black[0], black[1], black[2]); }
+      const v = Math.sin(p.getX(i) * 4.6 + 1.7) * Math.cos(p.getZ(i) * 3.4 + seed) + Math.sin(p.getY(i) * 5.1 + p.getX(i) * 1.6 + seed);
+      if (v > 0.35) c.setXYZ(i, black[0], black[1], black[2]);
     }
     return g;
   };
   const g = [
-    patch(sph(14, 9), M(0, 1.0, 0, 0.5, 0.46, 0.98), 3),
-    patch(sph(9, 7), M(0, 1.06, 1.06, 0.2, 0.22, 0.3, 0.35), 5, 1),
-    part(sph(6, 5), M(0, 0.93, 1.33, 0.13, 0.11, 0.09), pink, 1),
-    part(cyl(0.05, 0.02, 0.24, 5), M(-0.15, 1.28, 1.02, 1, 1, 1, 0, 0, 0.8), [0.85, 0.82, 0.7], 1),
-    part(cyl(0.05, 0.02, 0.24, 5), M(0.15, 1.28, 1.02, 1, 1, 1, 0, 0, -0.8), [0.85, 0.82, 0.7], 1),
-    part(sph(6, 5), M(0, 0.68, -0.28, 0.14, 0.13, 0.2), pink),
+    patchy(sph(16, 10), M(0, 1.05, -0.05, 0.47, 0.46, 0.74), 3),                 // barrel
+    patchy(sph(12, 8), M(0, 1.1, 0.55, 0.42, 0.44, 0.44), 8),                    // chest / shoulders
+    patchy(sph(12, 8), M(0, 1.08, -0.68, 0.43, 0.43, 0.4), 5),                   // rump
+    patchy(sph(10, 7), M(0, 1.39, 0.42, 0.2, 0.15, 0.3), 11),                    // withers hump
+    patchy(cyl(0.2, 0.27, 0.62, 9), M(0, 1.2, 1.0, 1, 1, 1, 1.05, 0, 0), 13, 1), // neck
+    patchy(sph(12, 9), M(0, 1.06, 1.42, 0.2, 0.235, 0.34, 0.5), 5, 1),           // skull
+    part(sph(10, 8), M(0, 0.9, 1.72, 0.16, 0.13, 0.15), pink, 1),                // muzzle
+    part(sph(6, 5), M(-0.055, 0.9, 1.84, 0.03, 0.025, 0.03), black, 1),
+    part(sph(6, 5), M(0.055, 0.9, 1.84, 0.03, 0.025, 0.03), black, 1),
+    part(sph(6, 5), M(-0.13, 1.16, 1.63, 0.05, 0.05, 0.05), black, 1),           // eyes
+    part(sph(6, 5), M(0.13, 1.16, 1.63, 0.05, 0.05, 0.05), black, 1),
+    part(sph(8, 5), M(-0.3, 1.2, 1.36, 0.16, 0.06, 0.09, 0, 0, 0.35), white, 1), // ears
+    part(sph(8, 5), M(0.3, 1.2, 1.36, 0.16, 0.06, 0.09, 0, 0, -0.35), white, 1),
+    part(cyl(0.012, 0.04, 0.17, 6), M(-0.14, 1.33, 1.36, 1, 1, 1, 0, 0, 0.7), horn, 1),
+    part(cyl(0.012, 0.04, 0.17, 6), M(0.14, 1.33, 1.36, 1, 1, 1, 0, 0, -0.7), horn, 1),
+    part(sph(10, 7), M(0, 0.72, -0.62, 0.17, 0.14, 0.22), pink),                 // udder
+    part(cyl(0.02, 0.035, 0.85, 5), M(0, 0.95, -1.06, 1, 1, 1, 0.12, 0, 0), black),// tail
+    part(sph(6, 5), M(0, 0.5, -1.13, 0.06, 0.13, 0.06), black),                  // tail tuft
   ];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.push(part(cyl(0.1, 0.075, 0.72, 6), M(sx * 0.26, 0.36, sz * 0.62), black));
-  return mergeGeometries(g);
-}
-function deerGeo() {
-  const coat = [0.32, 0.20, 0.11], belly = [0.5, 0.4, 0.29], dk = [0.1, 0.075, 0.055];
-  const g = [
-    part(sph(12, 8), M(0, 1.02, 0, 0.23, 0.26, 0.56), coat, 0, 0.18, 4),
-    part(sph(8, 6), M(0, 0.9, 0.05, 0.19, 0.16, 0.42), belly),
-    part(sph(6, 5), M(0, 1.02, -0.56, 0.11, 0.13, 0.08), [0.62, 0.6, 0.55]),
-    part(cyl(0.085, 0.06, 0.56, 6), M(0, 1.36, 0.58, 1, 1, 1, 0.6, 0, 0), coat, 1),
-    part(sph(8, 6), M(0, 1.62, 0.82, 0.09, 0.1, 0.18, 0.3), coat, 1),
-    part(sph(5, 4), M(0, 1.6, 0.98, 0.045, 0.045, 0.05), dk, 1),
-    part(sph(5, 4), M(-0.09, 1.72, 0.74, 0.03, 0.09, 0.05, 0, 0, 0.5), coat, 1),
-    part(sph(5, 4), M(0.09, 1.72, 0.74, 0.03, 0.09, 0.05, 0, 0, -0.5), coat, 1),
-  ];
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.push(part(cyl(0.035, 0.026, 0.92, 5), M(sx * 0.11, 0.46, sz * 0.4), dk));
+  quad(g, 0.82, white, black, 0.27, 0.6, -0.62, 0.115, 0.14, 0.055);
   return mergeGeometries(g);
 }
 
+function sheepGeo() {
+  const wool = [0.62, 0.59, 0.52], dark = [0.08, 0.07, 0.065], wool2 = [0.55, 0.52, 0.46];
+  const g = [
+    part(sph(14, 9), M(0, 0.7, 0, 0.33, 0.31, 0.5), wool, 0, 0.25, 1),
+    part(sph(10, 7), M(0, 0.71, 0.3, 0.3, 0.29, 0.28), wool2, 0, 0.25, 2),
+    part(sph(10, 7), M(0, 0.7, -0.3, 0.3, 0.29, 0.28), wool, 0, 0.25, 3),
+  ];
+  // curly fleece tufts
+  for (let i = 0; i < 16; i++) {
+    const a = i * 2.399, u = ((i * 0.6180339) % 1) * 2 - 1, r = Math.sqrt(1 - u * u);
+    g.push(part(sph(7, 5), M(Math.cos(a) * r * 0.29, 0.73 + u * 0.24, Math.sin(a) * r * 0.42, 0.11, 0.1, 0.11), i % 2 ? wool : wool2, 0, 0.3, i));
+  }
+  g.push(
+    part(cyl(0.09, 0.15, 0.36, 8), M(0, 0.88, 0.55, 1, 1, 1, 0.85, 0, 0), dark, 1),                // neck
+    part(sph(10, 8), M(0, 0.86, 0.79, 0.11, 0.135, 0.19, 0.4), dark, 1),                            // head
+    part(sph(6, 5), M(-0.055, 0.9, 0.86, 0.025, 0.025, 0.025), [0.7, 0.62, 0.3], 1),
+    part(sph(6, 5), M(0.055, 0.9, 0.86, 0.025, 0.025, 0.025), [0.7, 0.62, 0.3], 1),
+    part(sph(8, 5), M(-0.16, 0.92, 0.74, 0.11, 0.035, 0.06, 0, 0, 0.3), dark, 1),                   // ears
+    part(sph(8, 5), M(0.16, 0.92, 0.74, 0.11, 0.035, 0.06, 0, 0, -0.3), dark, 1),
+    part(sph(6, 5), M(0, 0.85, -0.5, 0.09, 0.08, 0.1), wool),                                       // tail
+  );
+  quad(g, 0.5, dark, dark, 0.13, 0.28, -0.3, 0.05, 0.06, 0.028);
+  return mergeGeometries(g);
+}
+
+function deerGeo() {
+  const coat = [0.20, 0.118, 0.062], belly = [0.36, 0.28, 0.20], dk = [0.06, 0.045, 0.032], rump = [0.55, 0.5, 0.42], horn = [0.42, 0.38, 0.3];
+  const g = [
+    part(sph(14, 9), M(0, 0.98, -0.02, 0.27, 0.3, 0.62), coat, 0, 0.14, 4),
+    part(sph(10, 7), M(0, 0.88, 0.0, 0.24, 0.2, 0.5), belly, 0, 0.08),
+    part(sph(10, 7), M(0, 1.02, -0.5, 0.26, 0.3, 0.28), coat, 0, 0.14, 6),
+    part(sph(7, 5), M(0, 1.0, -0.76, 0.12, 0.17, 0.05), rump),                                     // white rump patch
+    part(cyl(0.065, 0.13, 0.62, 8), M(0, 1.33, 0.6, 1, 1, 1, 0.65, 0, 0), coat, 1),                // neck
+    part(sph(10, 8), M(0, 1.66, 0.88, 0.1, 0.115, 0.2, 0.35), coat, 1),                            // head
+    part(sph(8, 6), M(0, 1.58, 1.05, 0.055, 0.055, 0.09, 0.35), belly, 1),                            // muzzle
+    part(sph(5, 4), M(0, 1.56, 1.13, 0.03, 0.027, 0.03), dk, 1),                                 // nose
+    part(sph(5, 4), M(-0.085, 1.71, 0.92, 0.022, 0.022, 0.022), dk, 1),
+    part(sph(5, 4), M(0.085, 1.71, 0.92, 0.022, 0.022, 0.022), dk, 1),
+    part(sph(8, 5), M(-0.15, 1.78, 0.79, 0.11, 0.04, 0.055, 0, 0, 0.55), coat, 1),                    // big ears
+    part(sph(8, 5), M(0.15, 1.78, 0.79, 0.11, 0.04, 0.055, 0, 0, -0.55), coat, 1),
+    part(sph(6, 5), M(0, 0.98, -0.8, 0.05, 0.07, 0.04, 0.5), rump),                              // tail
+  ];
+  // antlers: main beam + two tines each side
+  for (const sx of [-1, 1]) {
+    g.push(part(cyl(0.01, 0.017, 0.4, 5), M(sx * 0.08, 1.92, 0.75, 1, 1, 1, -0.25, 0, -sx * 0.32), horn, 1));
+    g.push(part(cyl(0.008, 0.012, 0.2, 5), M(sx * 0.14, 1.92, 0.73, 1, 1, 1, -0.9, 0, -sx * 0.6), horn, 1));
+    g.push(part(cyl(0.008, 0.012, 0.22, 5), M(sx * 0.16, 2.06, 0.69, 1, 1, 1, -0.6, 0, -sx * 0.5), horn, 1));
+  }
+  quad(g, 0.82, coat, dk, 0.13, 0.42, -0.44, 0.075, 0.092, 0.036);
+  return mergeGeometries(g);
+}
+
+// walk: metres/second when strolling, run: when fleeing; stride: radians of gait phase per metre travelled
 const SPECIES = {
-  sheep: { make: sheepGeo, r: 0.55, flee: 26, speed: 3.2, pivot: [0, 0.7, 0.5], max: 260 },
-  cow:   { make: cowGeo,   r: 1.0,  flee: 16, speed: 2.4, pivot: [0, 1.05, 0.95], max: 120 },
-  deer:  { make: deerGeo,  r: 0.7,  flee: 48, speed: 8.5, pivot: [0, 1.25, 0.5], max: 120 },
+  sheep: { make: sheepGeo, r: 0.55, flee: 26, walk: 0.55, run: 3.6, stride: 5.2, pivot: [0, 0.7, 0.5], max: 260 },
+  cow:   { make: cowGeo,   r: 1.0,  flee: 16, walk: 0.5,  run: 2.8, stride: 3.6, pivot: [0, 1.1, 0.95], max: 120 },
+  deer:  { make: deerGeo,  r: 0.7,  flee: 48, walk: 0.9,  run: 9.0, stride: 3.3, pivot: [0, 1.25, 0.6], max: 120 },
 };
 
 function makeMaterial(name, sp) {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
-  m.userData.cacheKey = 'animal_' + name;
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
+  m.userData.cacheKey = 'animal2_' + name;
   patchMaterial(m, (sh) => {
     sh.uniforms.uPivot = { value: new V3(...sp.pivot) };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute float aHead; uniform vec3 uPivot;`)
+        attribute float aHead; attribute vec4 aLeg; attribute vec2 aAnim; uniform vec3 uPivot;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
-        if (aHead > 0.5) {
-          vec3 ip = vec3(instanceMatrix[3].x, 0.0, instanceMatrix[3].z);
-          float ph = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
-          // slow grazing nod with occasional head-up moments
-          float nod = 0.45 * max(0.0, sin(uTime * 0.35 + ph)) + 0.05 * sin(uTime * 1.7 + ph * 2.0);
-          float c = cos(nod), s = sin(nod);
-          vec3 q = transformed - uPivot;
-          transformed = uPivot + vec3(q.x, q.y * c + q.z * s, -q.y * s + q.z * c);
+        {
+          float amp = aAnim.x, ph = aAnim.y;                       // amp: 0 standing .. ~0.4 strolling .. 1 running
+          if (aLeg.w > 0.5) {
+            float hy = aLeg.x, hz = aLeg.y, kneeY = hy * 0.5;
+            float sw = sin(ph + aLeg.z);
+            if (transformed.y < kneeY) {                             // fold the shank at the knee while the leg swings through
+              float f = max(0.0, -cos(ph + aLeg.z)) * 1.05 * amp;
+              float cf = cos(f), sf = sin(f);
+              float ky = transformed.y - kneeY, kz = transformed.z - hz;
+              transformed.y = kneeY + ky * cf - kz * sf;
+              transformed.z = hz + ky * sf + kz * cf;
+            }
+            float a = sw * (0.05 + 0.6 * amp);
+            float c = cos(a), s = sin(a);
+            float dy = transformed.y - hy, dz = transformed.z - hz;
+            transformed.y = hy + dy * c - dz * s;
+            transformed.z = hz + dy * s + dz * c;
+          }
+          transformed.y += amp * 0.045 * abs(sin(ph)) ;              // body rise / fall
+          transformed.x += amp * 0.03 * sin(ph);                      // slight side-to-side sway
+          if (aHead > 0.5) {
+            vec3 ip = vec3(instanceMatrix[3].x, 0.0, instanceMatrix[3].z);
+            float ph0 = fract(sin(dot(ip.xz, vec2(12.9898, 78.233))) * 43758.5453) * 6.2832;
+            // standing: slow grazing nods with head-up moments; moving: head carried up and bobbing with the stride
+            float graze = 0.5 * max(0.0, sin(uTime * 0.33 + ph0)) + 0.05 * sin(uTime * 1.7 + ph0 * 2.0) - 0.0;
+            float nod = mix(graze, -0.12 + 0.06 * sin(ph * 2.0), smoothstep(0.05, 0.3, amp));
+            float c = cos(nod), s = sin(nod);
+            vec3 q = transformed - uPivot;
+            transformed = uPivot + vec3(q.x, q.y * c + q.z * s, -q.y * s + q.z * c);
+          }
         }`);
   });
   return m;
@@ -119,7 +200,11 @@ export class Wildlife {
     this.group = new THREE.Group(); scene.add(this.group);
     this.meshes = {};
     for (const [name, sp] of Object.entries(SPECIES)) {
-      const mesh = new THREE.InstancedMesh(sp.make(), makeMaterial(name, sp), sp.max);
+      const geo = sp.make();
+      sp.anim = new THREE.InstancedBufferAttribute(new Float32Array(sp.max * 2), 2);
+      sp.anim.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('aAnim', sp.anim);
+      const mesh = new THREE.InstancedMesh(geo, makeMaterial(name, sp), sp.max);
       mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true;
       this.group.add(mesh); this.meshes[name] = mesh;
     }
@@ -163,7 +248,7 @@ export class Wildlife {
       if (h < w.waterY + 0.7 || d < 9 || t2 < 5) continue;
       const nx = w.height(x + 1.2, z) - w.height(x - 1.2, z), nz = w.height(x, z + 1.2) - w.height(x, z - 1.2);
       if (Math.hypot(nx, nz) / 2.4 > 0.45) continue;
-      c.push({ sp: species, hx: x, hz: z, x, z, y: h, yaw: yaw0 + (rnd() - 0.5) * 1.6, s: 0.88 + rnd() * 0.26, vx: 0, vz: 0, flee: 0, id: rnd() });
+      c.push({ sp: species, hx: x, hz: z, x, z, y: h, yaw: yaw0 + (rnd() - 0.5) * 1.6, s: 0.88 + rnd() * 0.26, vx: 0, vz: 0, flee: 0, id: rnd(), state: 0, timer: 2 + rnd() * 14, dir: 0, amp: 0, ph: rnd() * 6.28, vel: 0 });
     }
     return c;
   }
@@ -195,27 +280,47 @@ export class Wildlife {
         const cx = a.x - car.pos.x, cz = a.z - car.pos.z, cd = Math.hypot(cx, cz);
         if (cd < sp.flee && cs > 3.5 && a.flee <= 0) {
           a.flee = 4 + Math.random() * 3;
-          // run away from the car, biased away from the road
-          const away = Math.atan2(cz, cx);
+          const away = Math.atan2(cz, cx);           // run away from the car
           a.dir = away + (Math.random() - 0.5) * 0.9;
+          a.state = 2;
         }
       }
-      if (a.flee > 0) {
-        a.flee -= dt;
-        const spd = sp.speed * (a.flee > 1 ? 1 : a.flee);
-        a.x += Math.cos(a.dir) * spd * dt; a.z += Math.sin(a.dir) * spd * dt;
-        a.yaw = Math.atan2(Math.cos(a.dir), Math.sin(a.dir));       // model faces +Z
-        if (this.frame % 3 === 0) a.y = w.height(a.x, a.z);
-        if (a.y < w.waterY + 0.3) { a.flee = 0; a.x -= Math.cos(a.dir) * 2; a.z -= Math.sin(a.dir) * 2; }
+      // state machine: 0 graze (stand, head down), 1 stroll, 2 flee
+      if (a.state !== 2) {
+        a.timer -= dt;
+        if (a.timer <= 0) {
+          if (a.state === 0) { a.state = 1; a.timer = 3 + Math.random() * 7; a.dir = Math.random() * 6.283; }
+          else { a.state = 0; a.timer = 5 + Math.random() * 16; }
+        }
+      } else { a.flee -= dt; if (a.flee <= 0) { a.state = 0; a.timer = 4 + Math.random() * 6; } }
+      const targetSpeed = a.state === 2 ? sp.run * (a.flee > 1 ? 1 : Math.max(a.flee, 0.2)) : a.state === 1 ? sp.walk : 0;
+      a.vel += (targetSpeed - a.vel) * Math.min(1, dt * (targetSpeed > a.vel ? 2.2 : 3.5));
+      if (a.vel > 0.03 && dt > 0) {
+        const nx = a.x + Math.cos(a.dir) * a.vel * dt, nz = a.z + Math.sin(a.dir) * a.vel * dt;
+        // keep off the road, out of the water and off steep ground
+        const nh = w.heightRI(nx, nz), nd = w._tmp.d;
+        if (nh < w.waterY + 0.45 || nd < 7.5 || w.tdist < 3.2 || Math.abs(nh - a.y) > 0.5 * a.vel * dt + 0.12) {
+          a.dir += Math.PI * (0.6 + Math.random() * 0.8);
+          if (a.state === 1) { a.state = 0; a.timer = 3 + Math.random() * 5; }
+        } else { a.x = nx; a.z = nz; a.y += (nh - a.y) * Math.min(1, dt * 8); }
+        // turn smoothly towards the direction of travel (the model faces +Z)
+        const want = Math.atan2(Math.cos(a.dir), Math.sin(a.dir));
+        let dy = want - a.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+        a.yaw += dy * Math.min(1, dt * (a.state === 2 ? 7 : 3.2));
       }
-      const bob = a.flee > 0 ? Math.abs(Math.sin(time * 9 + a.id * 20)) * 0.07 * a.s : 0;
-      p.set(a.x, a.y + bob, a.z);
+      const moving = a.vel > 0.06;
+      const ampT = moving ? Math.min(1, 0.2 + 0.8 * (a.vel / sp.run) ** 0.7) : 0;
+      a.amp += (ampT - a.amp) * Math.min(1, dt * 6);
+      a.ph += a.vel * sp.stride * dt;
+      p.set(a.x, a.y, a.z);
       q.setFromAxisAngle(this.up, a.yaw);
       sc.setScalar(a.s);
       m4.compose(p, q, sc);
-      this.meshes[a.sp].setMatrixAt(counts[a.sp]++, m4);
+      const ci = counts[a.sp]++;
+      this.meshes[a.sp].setMatrixAt(ci, m4);
+      sp.anim.setXY(ci, a.amp, a.ph);
     }
-    for (const k in this.meshes) { this.meshes[k].count = counts[k]; this.meshes[k].instanceMatrix.needsUpdate = true; }
+    for (const k in this.meshes) { this.meshes[k].count = counts[k]; this.meshes[k].instanceMatrix.needsUpdate = true; SPECIES[k].anim.needsUpdate = true; }
     this._updateBirds(cam, time);
   }
 

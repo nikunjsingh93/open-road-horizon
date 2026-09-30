@@ -171,8 +171,41 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   drawCluster(0, 900, 'N', 'km/h', 0);
 
   const carMats = Object.values(mats);
+  // ---- decorative traffic cars: same model, own paint materials, no lights / shadows ----
+  let curEnv = null;
+  const paintMats = {};
+  const paintMat = (hex) => {
+    if (!paintMats[hex]) {
+      const m = mats.CarPaint.clone();
+      m.color.setHex(hex);
+      if (hooks.csm) hooks.csm.setupMaterial(m);
+      if (curEnv) m.envMap = curEnv;
+      paintMats[hex] = m;
+    }
+    return paintMats[hex];
+  };
+  const spawnTraffic = (hex) => {
+    const group = new THREE.Group();
+    const body = model.clone(true);
+    body.traverse(o => {
+      if (!o.isMesh) return;
+      if (o.material === mats.CarPaint) o.material = paintMat(hex);
+      o.castShadow = false;
+    });
+    group.add(body);
+    const ws = [];
+    for (let i = 0; i < 4; i++) {
+      const pivot = new THREE.Group(), spinner = new THREE.Group();
+      const w = wheelTemplate.clone(true);
+      w.traverse(o => { if (o.isMesh) o.castShadow = false; });
+      if (corners[i][0] < 0) w.rotation.y = Math.PI;
+      spinner.add(w); pivot.add(spinner); group.add(pivot);
+      ws.push({ pivot, spinner });
+    }
+    return { root: group, wheels: ws };
+  };
   const api = {
-    root, wheels, mats, spots, cabin,
+    root, wheels, mats, spots, cabin, spawnTraffic,
     // steering wheel angle (rad, positive = right turn) and cluster refresh (throttled)
     setSteer(a) { spin.rotation.z = -a; },
     updateCluster(now, speed, rpm, gear, unitLabel) {
@@ -184,7 +217,7 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
 
     setPaint(hex) { mats.CarPaint.color.setHex(hex); },
     // per-material reflection strength needs an explicit envMap (scene.environment ignores material.envMapIntensity)
-    setEnv(tex) { for (const m of carMats) { const first = !m.envMap; m.envMap = tex; if (first) m.needsUpdate = true; } },
+    setEnv(tex) { curEnv = tex; for (const m of Object.values(paintMats)) { m.envMap = tex; m.needsUpdate = true; } for (const m of carMats) { const first = !m.envMap; m.envMap = tex; if (first) m.needsUpdate = true; } },
     setBrake(on) { mats.TailLamp.emissiveIntensity = on ? 4.5 : 0.9 + api.night * 1.2; },
     night: 0,
     setNight(n) {
