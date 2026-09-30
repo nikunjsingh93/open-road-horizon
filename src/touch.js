@@ -71,6 +71,20 @@ export function setupTouch(game) {
   mk('', '<span>Brake</span>', { width: K, height: K, right: `calc(${br} + ${G} + 14px)`, bottom: bb }, ...hold('KeyS'));
   mk('small', '<span>Hand</span><span>brake</span>', { width: 'clamp(56px, 14vmin, 84px)', height: 'clamp(56px, 14vmin, 84px)', right: br, bottom: `calc(${bb} + ${G} + 14px)` }, ...hold('Space'));
 
+  // manual gearbox buttons (only visible in manual mode)
+  const gb = 'clamp(48px, 12vmin, 68px)';
+  const gUp = mk('small', chev(-1).replace('M15 4 7 12l8 8', 'M4 15l8-8 8 8'), { width: gb, height: gb, left: bl, bottom: `calc(${bb} + ${S} + 14px)` }, () => game.shift(1), null);
+  const gDn = mk('small', chev(-1).replace('M15 4 7 12l8 8', 'M4 9l8 8 8-8'), { width: gb, height: gb, left: `calc(${bl} + ${gb} + 12px)`, bottom: `calc(${bb} + ${S} + 14px)` }, () => game.shift(-1), null);
+  const gLbl = document.createElement('div');
+  Object.assign(gLbl.style, { position: 'absolute', left: `calc(${bl} + ${gb} * 2 + 26px)`, bottom: `calc(${bb} + ${S} + 14px + ${gb} / 2 - 12px)`, font: '600 20px/24px system-ui, sans-serif', textShadow: '0 1px 6px rgba(0,0,0,.6)', letterSpacing: '1px', pointerEvents: 'none' });
+  root.appendChild(gLbl);
+  const syncGears = () => {
+    const man = game.settings.gearbox === 'manual' && !game.auto;
+    for (const el of [gUp, gDn, gLbl]) el.style.display = man ? '' : 'none';
+    if (man) { const gr = game.vehicle.gear; gLbl.textContent = gr < 0 ? 'R' : gr === 0 ? 'N' : String(gr); }
+  };
+  setInterval(syncGears, 150); syncGears();
+
   // top-right buttons
   const T = 'clamp(42px, 10vmin, 54px)';
   const top = 'max(12px, env(safe-area-inset-top))';

@@ -104,47 +104,77 @@ export function makeSmallLeafTexture(seed = 3, hue = 78, size = 512, opt = {}) {
 
 // Conifer branch: a twig with dense needles both sides
 export function makeNeedleTexture(seed = 5, hue = 128, w = 256, h = 512) {
+  // A spruce branch spray: a tapering frond of hundreds of fine needles on forward-swept twigs, dark inside, fresh yellow-green tips.
   const rnd = mulberry32(seed);
   const c = canvas(w, h), ctx = c.getContext('2d');
   ctx.clearRect(0, 0, w, h);
-  // central stem runs bottom->top (x = w/2)
+  ctx.lineCap = 'round';
   const stemX = w / 2;
-  ctx.strokeStyle = '#3b2c1c'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(stemX, h); ctx.lineTo(stemX, h * 0.02); ctx.stroke();
-  // side twigs, each with needles
-  const needles = (x0, y0, ang, len, depthShade) => {
-    const n = Math.floor(len / 4.2);
+  const S = w / 256;
+  const wood = (x0, y0, x1, y1, lw) => { ctx.strokeStyle = '#3a2a1a'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+  // needles along a twig from (x0,y0) heading 'ang' for 'len' px; tip=1 => fresh growth colouring
+  const needles = (x0, y0, ang, len, shade, fresh) => {
+    const step = 2.3 * S;
+    const n = Math.max(2, Math.floor(len / step));
     for (let i = 0; i < n; i++) {
       const t = i / n;
       const bx = x0 + Math.cos(ang) * len * t, by = y0 + Math.sin(ang) * len * t;
-      for (const side of [-1, 1]) {
-        const a = ang + side * (0.9 + rnd() * 0.35);
-        const nl = 15 + rnd() * 9 - t * 6;
-        const hh = hue + (rnd() - 0.5) * 12;
-        const l = (14 + rnd() * 12) * depthShade;
-        ctx.strokeStyle = hsl(hh, 48 + rnd() * 12, l + t * 4);
-        ctx.lineWidth = 1.8 + rnd() * 0.8;
-        ctx.beginPath(); ctx.moveTo(bx, by);
-        ctx.lineTo(bx + Math.cos(a) * nl, by + Math.sin(a) * nl); ctx.stroke();
+      const cnt = 3;
+      for (let k = 0; k < cnt; k++) {
+        for (const side of [-1, 1]) {
+          const spread = (0.55 + rnd() * 0.75) * side;            // needles sweep forward of the twig
+          const a = ang + spread;
+          const nl = (10 + rnd() * 9) * S * (1 - t * 0.35);
+          const tip = fresh * smoothT(t, 0.55, 1);
+          const hh = hue - 6 + (rnd() - 0.5) * 14 - tip * 12;
+          const ss = 36 + rnd() * 16 + tip * 8;
+          const ll = (13 + rnd() * 10) * shade + t * 5 + tip * 8;
+          ctx.strokeStyle = hsl(hh, ss, ll);
+          ctx.lineWidth = (1.35 + rnd() * 0.6) * S;
+          ctx.beginPath(); ctx.moveTo(bx, by);
+          ctx.lineTo(bx + Math.cos(a) * nl, by + Math.sin(a) * nl); ctx.stroke();
+        }
       }
     }
   };
-  const twigs = 22;
+  function smoothT(t, a, b) { const x = Math.min(1, Math.max(0, (t - a) / (b - a))); return x * x * (3 - 2 * x); }
+  // dense dark under-layer so the spray reads as a full frond with a ragged needle fringe
+  {
+    const prof = (t) => (w * 0.5) * (0.28 + 0.72 * Math.pow(Math.sin(Math.min(1, t * 0.92 + 0.06) * Math.PI), 0.7)) * 0.62;
+    ctx.fillStyle = hsl(hue - 10, 34, 9, 0.92);
+    ctx.beginPath();
+    for (let k = 0; k <= 24; k++) { const t = k / 24; ctx.lineTo(stemX + prof(t) * 0.95, h * (0.985 - t * 0.9)); }
+    for (let k = 24; k >= 0; k--) { const t = k / 24; ctx.lineTo(stemX - prof(t) * 0.95, h * (0.985 - t * 0.9)); }
+    ctx.closePath(); ctx.fill();
+  }
+  const twigs = 30;
   for (let i = 0; i < twigs; i++) {
-    const t = i / twigs;
-    const y0 = h * (0.97 - t * 0.9);
-    const len = (w * 0.47) * (0.35 + 0.65 * Math.sin(Math.min(1, t * 1.05 + 0.08) * Math.PI * 0.8));
+    const t = i / twigs;                               // 0 = branch base (bottom) ... 1 = tip
+    const y0 = h * (0.985 - t * 0.9);
+    // frond outline: widest at ~30% then tapering to the tip
+    const outline = Math.pow(Math.sin(Math.min(1, t * 0.92 + 0.06) * Math.PI), 0.7);
+    const len = (w * 0.5) * (0.28 + 0.72 * outline);
     for (const side of [-1, 1]) {
-      const ang = (side < 0 ? Math.PI : 0) + side * -0.2 - 0.5 * side * (0.2 + t * 0.5) * (side < 0 ? -1 : 1) * 0;
-      const a2 = side < 0 ? Math.PI + 0.55 : -0.55; // upwards & outwards
-      ctx.strokeStyle = '#3b2c1c'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(stemX, y0);
+      const phi = 1.08 - t * 0.2 + (rnd() - 0.5) * 0.16;            // angle between twig and stem (swept toward the tip)
+      const a2 = -Math.PI / 2 + side * phi;
       const ex = stemX + Math.cos(a2) * len, ey = y0 + Math.sin(a2) * len;
-      ctx.lineTo(ex, ey); ctx.stroke();
-      needles(stemX, y0, a2, len, 0.85 + rnd() * 0.3);
+      wood(stemX, y0, ex, ey, 1.5 * S);
+      needles(stemX, y0, a2, len, 0.8 + rnd() * 0.4, 0.5 + rnd() * 0.5);
+      // short sprigs off the twig
+      const sprigs = Math.floor(len / (14 * S));
+      for (let k = 1; k <= sprigs; k++) {
+        const tt = k / (sprigs + 1);
+        const px = stemX + Math.cos(a2) * len * tt, py = y0 + Math.sin(a2) * len * tt;
+        const sa = a2 + (0.7 + rnd() * 0.3) * (rnd() < 0.5 ? 1 : -1);
+        const sl = len * (0.18 + rnd() * 0.12) * (1 - tt * 0.5);
+        wood(px, py, px + Math.cos(sa) * sl, py + Math.sin(sa) * sl, 1.1 * S);
+        needles(px, py, sa, sl, 0.7 + rnd() * 0.4, 0.4 + rnd() * 0.6);
+      }
     }
   }
-  needles(stemX, h * 0.10, -Math.PI / 2, h * 0.09, 1.1);
+  // leading shoot
+  wood(stemX, h * 0.13, stemX, h * 0.02, 2 * S);
+  needles(stemX, h * 0.13, -Math.PI / 2, h * 0.11, 1.05, 1);
   dilate(ctx, w, h);
   return finish(c);
 }
@@ -186,28 +216,43 @@ export function makeBarkTexture(seed = 2, kind = 'oak', size = 256) {
 
 // Grass tuft card: several blades fanning from the bottom
 export function makeGrassTexture(seed = 9, w = 256, h = 256) {
+  // A clump of ~50 broad tapering blades with a lighter mid-rib, warm olive at the base, yellow-green in the sun-lit tips.
   const rnd = mulberry32(seed);
   const c = canvas(w, h), ctx = c.getContext('2d');
   ctx.clearRect(0, 0, w, h);
-  const blades = Math.round(110 * (w / 256));
+  const S = w / 256;
+  const blades = 52;
+  const order = [];
+  for (let i = 0; i < blades; i++) order.push(rnd());
+  order.sort((a, b) => a - b);
   for (let i = 0; i < blades; i++) {
-    const x0 = w * (0.12 + rnd() * 0.76);
-    const tipX = x0 + (rnd() - 0.5) * w * 0.5;
-    const hgt = h * (0.35 + rnd() * 0.6);
-    const bw = (1.6 + rnd() * 2.4) * (w / 256);
-    const ctrl = x0 + (tipX - x0) * 0.3 + (rnd() - 0.5) * 20;
+    const back = 1 - order[i];                                   // paint tall/back blades first
+    const x0 = w * (0.16 + rnd() * 0.68);
+    const hgt = h * (0.42 + Math.pow(rnd(), 0.7) * 0.55);
+    const lean = (rnd() - 0.5) * w * 0.55;
+    const tipX = x0 + lean;
+    const bw = (3.6 + rnd() * 3.8) * S;
+    const bend = (rnd() - 0.5) * w * 0.18;
+    const ctrlX = x0 + lean * 0.25 + bend, ctrlY = h - hgt * 0.62;
+    const hue = 76 + rnd() * 26, dry = rnd() < 0.14;
     const g = ctx.createLinearGradient(0, h, 0, h - hgt);
-    const hue = 84 + rnd() * 26;
-    g.addColorStop(0, hsl(hue, 45, 22));
-    g.addColorStop(0.55, hsl(hue, 58, 38));
-    g.addColorStop(1, hsl(hue - 6, 62, 56));
+    g.addColorStop(0, hsl(hue - 4, 38, dry ? 24 : 15 + back * 3));
+    g.addColorStop(0.45, hsl(dry ? 52 : hue, dry ? 40 : 46, dry ? 42 : 28 + rnd() * 6));
+    g.addColorStop(1, hsl(dry ? 48 : hue - 10, dry ? 46 : 55, dry ? 58 : 48 + rnd() * 8));
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x0 - bw, h);
-    ctx.quadraticCurveTo(ctrl - bw * 0.6, h - hgt * 0.55, tipX, h - hgt);
-    ctx.quadraticCurveTo(ctrl + bw * 0.6, h - hgt * 0.55, x0 + bw, h);
+    ctx.quadraticCurveTo(ctrlX - bw * 0.85, ctrlY, tipX, h - hgt);
+    ctx.quadraticCurveTo(ctrlX + bw * 0.85, ctrlY, x0 + bw, h);
     ctx.closePath(); ctx.fill();
+    // mid-rib highlight
+    ctx.strokeStyle = hsl(hue - 8, 40, 46, 0.35); ctx.lineWidth = 0.9 * S;
+    ctx.beginPath(); ctx.moveTo(x0, h); ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, h - hgt); ctx.stroke();
   }
+  // dark, soft contact shadow at the very base so tufts sit in the ground
+  const sh = ctx.createLinearGradient(0, h, 0, h * 0.78);
+  sh.addColorStop(0, 'rgba(8,16,4,0.55)'); sh.addColorStop(1, 'rgba(8,16,4,0)');
+  ctx.globalCompositeOperation = 'source-atop'; ctx.fillStyle = sh; ctx.fillRect(0, h * 0.78, w, h * 0.22); ctx.globalCompositeOperation = 'source-over';
   dilate(ctx, w, h);
   return finish(c);
 }

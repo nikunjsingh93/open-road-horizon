@@ -92,7 +92,7 @@ function makeAtlas(season = 'summer') {
     put(TX.makeLeafTexture(11, 94, 512), 'oak');
     put(TX.makeSmallLeafTexture(5, 74, 512), 'birch');
   }
-  put(TX.makeNeedleTexture(8, 132, 256, 512), 'spruce');
+  put(TX.makeNeedleTexture(8, 112, 256, 512), 'spruce');
   put(TX.makeLeafTexture(23, 100, 512), 'maple');
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -197,7 +197,7 @@ export class TreeLibrary {
     this.variants = variants;
     this.season = season;
     this.atlas = makeAtlas(season);
-    const leafOpts = { map: this.atlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.62, metalness: 0, vertexColors: true, alphaToCoverage: true };
+    const leafOpts = { map: this.atlas, alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.82, metalness: 0, vertexColors: true, alphaToCoverage: true };
     // plain leaf material (bushes etc.)
     this.leafMat = new THREE.MeshStandardMaterial(leafOpts);
     this.leafMat.userData.cacheKey = 'leaf';

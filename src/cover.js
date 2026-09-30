@@ -11,44 +11,30 @@ const V3 = THREE.Vector3;
 // ---------------------------------------------------------------------------
 // Geometry helpers
 // ---------------------------------------------------------------------------
-function grassGeometry() {
-  // clump of three crossed quads, normals pointing up for soft lighting
+function grassCards(count, hw, h, taper, leanMax, seed) {
+  // crossed cards whose tops lean outwards and narrow slightly, so a clump reads as bending blades instead of flat panes
+  const rnd = mulberry32(seed);
   const b = new GeoBuilder();
   b.group(1);
   const n = new V3(0, 1, 0);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI + 0.3;
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI + 0.25 + (rnd() - 0.5) * 0.35;
     const cx = Math.cos(a), cz = Math.sin(a);
-    const hw = 0.42, h = 0.62;
+    const lean = (rnd() < 0.5 ? -1 : 1) * leanMax * (0.35 + rnd() * 0.65);
+    const nx = -cz * lean, nz = cx * lean;                        // lean sideways out of the card plane
+    const sc = 0.85 + rnd() * 0.3;
     const ids = [
-      b.vert({ x: -cx * hw, y: 0, z: -cz * hw }, n, 0, 0, 0.55, [0, 0, 0]),
-      b.vert({ x: cx * hw, y: 0, z: cz * hw }, n, 1, 0, 0.55, [0, 0, 0]),
-      b.vert({ x: cx * hw * 0.92, y: h, z: cz * hw * 0.92 }, n, 1, 1, 1.0, [1, 0.4, 0]),
-      b.vert({ x: -cx * hw * 0.92, y: h, z: -cz * hw * 0.92 }, n, 0, 1, 1.0, [1, 0.4, 0]),
+      b.vert({ x: -cx * hw * sc, y: 0, z: -cz * hw * sc }, n, 0, 0, 0.5, [0, 0, 0]),
+      b.vert({ x: cx * hw * sc, y: 0, z: cz * hw * sc }, n, 1, 0, 0.5, [0, 0, 0]),
+      b.vert({ x: cx * hw * sc * taper + nx, y: h * sc, z: cz * hw * sc * taper + nz }, n, 1, 1, 1.0, [1, 0.5, 0]),
+      b.vert({ x: -cx * hw * sc * taper + nx, y: h * sc, z: -cz * hw * sc * taper + nz }, n, 0, 1, 1.0, [1, 0.5, 0]),
     ];
     b.tri(ids[0], ids[1], ids[2]); b.tri(ids[0], ids[2], ids[3]);
   }
   return b.build().leaf;
 }
-
-function tallGrassGeometry() {
-  const b = new GeoBuilder();
-  b.group(1);
-  const n = new V3(0, 1, 0);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * Math.PI + 0.2;
-    const cx = Math.cos(a), cz = Math.sin(a);
-    const hw = 0.55, h = 1.0;
-    const ids = [
-      b.vert({ x: -cx * hw, y: 0, z: -cz * hw }, n, 0, 0, 0.5, [0, 0, 0]),
-      b.vert({ x: cx * hw, y: 0, z: cz * hw }, n, 1, 0, 0.5, [0, 0, 0]),
-      b.vert({ x: cx * hw * 0.9, y: h, z: cz * hw * 0.9 }, n, 1, 1, 1.0, [1, 0.5, 0]),
-      b.vert({ x: -cx * hw * 0.9, y: h, z: -cz * hw * 0.9 }, n, 0, 1, 1.0, [1, 0.5, 0]),
-    ];
-    b.tri(ids[0], ids[1], ids[2]); b.tri(ids[0], ids[2], ids[3]);
-  }
-  return b.build().leaf;
-}
+function grassGeometry() { return grassCards(4, 0.4, 0.62, 0.92, 0.16, 11); }
+function tallGrassGeometry() { return grassCards(5, 0.5, 1.0, 0.9, 0.24, 23); }
 
 function flowerTexture(seed = 3) {
   const rnd = mulberry32(seed);

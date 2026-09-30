@@ -89,18 +89,20 @@ export async function loadCar(url = import.meta.env.BASE_URL + 'assets/car.glb')
   const column = new THREE.Group();
   column.rotation.x = -0.38; // wheel plane faces the driver (tilted back)
   const spin = new THREE.Group();
-  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.148, 0.014, 16, 56), leather);
-  spin.add(rim);
-  for (const a of [Math.PI / 2, Math.PI * 0.5 + Math.PI * 2 / 3, Math.PI * 0.5 + Math.PI * 4 / 3]) {
-    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.02, 0.013), leather);
-    sp.position.set(Math.cos(a) * 0.074, Math.sin(a) * 0.074, 0);
-    sp.rotation.z = a;
-    spin.add(sp);
+  // Model-Y style wheel: plain round padded rim, one horizontal bar with a rounded centre pad, thumb rollers on the bar
+  const rimMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1c, roughness: 0.5, metalness: 0.0 });
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.0195, 20, 72), rimMat);
+  rim.scale.z = 0.82; spin.add(rim);
+  const barGeo = new THREE.CapsuleGeometry(0.02, 0.23, 8, 16);
+  const bar = new THREE.Mesh(barGeo, rimMat); bar.rotation.z = Math.PI / 2; bar.scale.set(1, 1, 0.72); bar.position.y = -0.012; spin.add(bar);
+  const pad = new THREE.Mesh(new THREE.SphereGeometry(0.05, 32, 16), rimMat);
+  pad.scale.set(1.15, 0.8, 0.55); pad.position.set(0, -0.012, 0.004); spin.add(pad);
+  for (const sx of [-1, 1]) {
+    const roller = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0115, 0.008, 20), metal);
+    roller.rotation.x = Math.PI / 2; roller.position.set(sx * 0.084, -0.012, 0.0155); spin.add(roller);
   }
-  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.055, 0.04, 28), leather);
-  hub.rotation.x = Math.PI / 2; spin.add(hub);
-  const badge = new THREE.Mesh(new THREE.CircleGeometry(0.022, 24), metal);
-  badge.position.z = 0.021; spin.add(badge);
+  const mark = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.02, 0.004), metal);   // 12 o'clock marker
+  mark.position.set(0, 0.145, 0.016); spin.add(mark);
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 16), leather);
   stem.rotation.x = Math.PI / 2; stem.position.z = -0.1; column.add(stem);
   column.add(spin); cab.add(column);

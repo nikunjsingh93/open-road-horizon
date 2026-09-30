@@ -28,6 +28,7 @@ A recent Chromium browser with WebGL2 is required. Click the start screen once (
 | `W` / `↑`, `S` / `↓` | throttle, brake / reverse |
 | `A` `D` / `←` `→` | steer |
 | `Space` | handbrake |
+| `E` / `Q` | shift up / down (when *Gearbox → Manual* is selected in settings) |
 | `C` | autopilot (relaxed cruising, follows the road) |
 | `V` | cycle camera: chase · far · low · hood · cockpit (working steering wheel + instrument cluster) |
 | `R` | recover onto the road |

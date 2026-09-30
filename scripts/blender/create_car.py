@@ -796,6 +796,25 @@ def build_headliner(cabin):
     bm.to_mesh(d.data); bm.free()
     return d
 
+def build_roof_lining():
+    """Solid ceiling over the cabin (the cabin shell alone leaves the roof open when seen from inside)."""
+    bm = bmesh.new()
+    ys = [-1.62 + (0.55 + 1.62) * (i / 48) for i in range(49)]
+    nx = 20
+    rows = []
+    for y in ys:
+        zt = interp(ROOF, y); w = interp(WT, y) + 0.03
+        row = []
+        for j in range(nx + 1):
+            u = -1 + 2 * j / nx
+            row.append(bm.verts.new((u * w, y, zt - 0.048 - 0.05 * u * u - 0.05 * u ** 6)))
+        rows.append(row)
+    for i in range(len(ys) - 1):
+        for j in range(nx):
+            f = bm.faces.new((rows[i + 1][j], rows[i + 1][j + 1], rows[i][j + 1], rows[i][j]))
+            f.material_index = mi('Headliner'); f.smooth = True
+    return make_obj('HeadlinerRoof', bm, mat_idx=mi('Headliner'))
+
 def build_liners(body):
     """Inner side walls of the cabin (reversed copy of the body sides, pushed inwards) so the doors/sills are not see-through from the driver's seat."""
     d = body.copy(); d.data = body.data.copy(); d.name = 'Liner'; link(d)
@@ -828,6 +847,7 @@ def main():
     smooth_shade(body); smooth_shade(cabin)
     headliner = build_headliner(cabin)
     liners = build_liners(body)
+    roof = build_roof_lining()
     details = build_details(body, cabin)
     mirrors = build_mirrors()
     exhaust = build_exhaust()

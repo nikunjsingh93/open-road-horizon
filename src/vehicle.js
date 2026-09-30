@@ -59,7 +59,7 @@ export class Vehicle {
     this.steerInput = 0; this.steerAngle = 0;
     this.throttle = 0; this.brake = 0; this.handbrake = 0;
     // drivetrain
-    this.snow = 0; this.wet = 0; this.assist = 0.6; this.tcOn = true; this.gear = 1; this.rpm = SPEC.idle; this.shiftTimer = 0;
+    this.snow = 0; this.wet = 0; this.assist = 0.6; this.tcOn = true; this.tune = { power: 1, grip: 1 }; this.manual = false; this.gear = 1; this.rpm = SPEC.idle; this.shiftTimer = 0;
     this.speed = 0; this.speedKmh = 0; this.fwdSpeed = 0;
     this.s = 0; this.t = 0;
     this.onGround = 0; this.slip = 0;
@@ -148,7 +148,9 @@ export class Vehicle {
 
   // W/S style input with automatic reverse
   drive(accelKey, brakeKey, steer, handbrake, dt) {
-    if (this.gear >= 1) {
+    if (this.manual) {
+      this.throttle = accelKey; this.brake = brakeKey;     // pedals do what they say; the gear lever decides the direction
+    } else if (this.gear >= 1) {
       this.throttle = accelKey; this.brake = brakeKey;
       if (brakeKey > 0.1 && accelKey < 0.1 && this.fwdSpeed < 0.6) { this.gear = -1; this._revHold = 0; }
     } else {
@@ -177,10 +179,10 @@ export class Vehicle {
 
     // ---- engine / gearbox ----
     const rearOmega = (this.wheels[2].omega + this.wheels[3].omega) * 0.5;
-    const ratioAbs = (this.gear > 0 ? S.gears[this.gear - 1] : S.reverse) * S.finalDrive;
-    const ratio = this.gear > 0 ? ratioAbs : -ratioAbs;
+    const ratioAbs = (this.gear > 0 ? S.gears[this.gear - 1] : this.gear < 0 ? S.reverse : 0) * S.finalDrive;
+    const ratio = this.gear > 0 ? ratioAbs : this.gear < 0 ? -ratioAbs : 0;
     const wheelRpm = Math.abs(rearOmega) * 60 / (2 * Math.PI) * ratioAbs;
-    const clutchRpm = S.idle + 1300 * this.throttle;
+    const clutchRpm = S.idle + (this.gear === 0 ? 4800 : 1300) * this.throttle;
     const engaged = smoothstep(clutchRpm * 0.9, clutchRpm * 1.35, wheelRpm);
     let rpm = Math.max(S.idle, wheelRpm * engaged + clutchRpm * (1 - engaged));
     if (this.shiftTimer > 0) { this.shiftTimer -= dt; rpm = Math.max(S.idle, rpm * 0.96); }
@@ -190,9 +192,9 @@ export class Vehicle {
       const rs = Math.max(this.wheels[2].slipRatio, this.wheels[3].slipRatio, 0);
       const loose = this.wheels[2].surf !== 0 || this.wheels[3].surf !== 0;
       const tcLow = smoothstep(2, 6, this.speed);   // let it launch: at a crawl a little wheel speed is normal
-      const tc = this.tcOn && !loose ? 1 - (1 - clamp(1 - (rs - 0.2) * 3, 0.3, 1)) * tcLow : this.tcOn ? clamp(1 - (rs - 0.5) * 2, 0.5, 1) : 1;
+      const tc = this.tcOn && loose ? clamp(1 - (rs - 0.5) * 2, 0.5, 1) : 1;   // tarmac traction is limited per wheel below
       const thr = this.throttle * tc;
-      const full = S.maxTorque * torqueCurve(this.rpm);
+      const full = S.maxTorque * torqueCurve(this.rpm) * this.tune.power;
       const drag = -S.maxTorque * 0.15 * (this.rpm / 6000) * (1 - thr);
       engT = thr * full + drag;
       if (this.rpm > S.redline) engT = Math.min(engT, 0) - 30;
@@ -248,7 +250,7 @@ export class Vehicle {
       vc.copy(this.omega).cross(r).add(this.vel);
       const vx = vc.dot(wf), vy = vc.dot(wl);
       const mu0 = (wh.surf === 0 ? 1.42 : wh.surf === 1 ? 0.95 : 0.88) * (1 - 0.5 * this.snow) * (1 - 0.22 * this.wet);
-      const mu = mu0 * (1 - 0.07 * (f / 3400 - 1));
+      const mu = mu0 * (1 - 0.07 * (f / 3400 - 1)) * this.tune.grip * (wh.drive ? 1.06 : 1.0);   // a touch more rear grip = less power-on oversteer
       const Fz = f;
       const vref = Math.max(Math.abs(vx), 1.6);
       const R = S.radius, I = S.wheelInertia;
@@ -258,7 +260,12 @@ export class Vehicle {
       // auto-hold: with no pedal input the car stays put instead of rolling away on slopes (or creeping in reverse)
       const holdT = holdK * 900;
       brakeT = Math.max(brakeT, holdT);
-      const Td = wh.drive ? drivenTorque / 2 : 0;
+      let Td = wh.drive ? drivenTorque / 2 : 0;
+      if (this.tcOn && Td > 0) {
+        // traction control: never ask a tyre for more drive force than its friction circle can give after cornering load
+        const cap = Math.max(0.22 * mu * Fz, Math.sqrt(Math.max(0, Math.pow(0.97 * mu * Fz, 2) - wh.fy * wh.fy))) * R;
+        if (Td > cap) Td = cap;
+      }
       const evalF = (om, out) => {
         const kap = (om * R - vx) / vref;
         const ta = vy / vref;
@@ -329,6 +336,25 @@ export class Vehicle {
     this._gearbox();
   }
 
+  // manual gearbox: -1 = R, 0 = N, 1..6
+  shiftUp() {
+    if (!this.manual || this.shiftTimer > 0.05) return false;
+    if (this.gear < 6) this.gear++; else return false;
+    this.shiftTimer = 0.2; return true;
+  }
+  shiftDown() {
+    if (!this.manual || this.shiftTimer > 0.05) return false;
+    const S = SPEC;
+    if (this.gear > 1) {
+      const rpmAfter = Math.abs(this.fwdSpeed) / S.radius * 60 / (2 * Math.PI) * S.gears[this.gear - 2] * S.finalDrive;
+      if (rpmAfter > S.redline * 1.03) return false;                 // would over-rev the engine
+      this.gear--;
+    } else if (this.gear === 1) this.gear = 0;
+    else if (this.gear === 0) { if (Math.abs(this.fwdSpeed) > 3) return false; this.gear = -1; }
+    else return false;
+    this.shiftTimer = 0.2; return true;
+  }
+
   _raycast(org, up, maxLen) {
     const dy = up.y;
     if (dy < 0.25) return -1;
@@ -345,7 +371,7 @@ export class Vehicle {
 
   _gearbox() {
     const S = SPEC;
-    if (this.gear < 1 || this.shiftTimer > 0) return;
+    if (this.manual || this.gear < 1 || this.shiftTimer > 0) return;
     const rearOmega = Math.abs(this.fwdSpeed) / S.radius;
     const upRpm = 3300 + 3000 * this.throttle * this.throttle;
     const downRpm = 1350 + 900 * this.throttle;

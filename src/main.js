@@ -267,6 +267,8 @@ class Game {
         case 'Escape': case 'KeyP': this.ui.toggle(); break;
         case 'KeyC': this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); break;
         case 'KeyV': this.cycleCamera(); break;
+        case 'KeyE': this.shift(1); break;
+        case 'KeyQ': this.shift(-1); break;
         case 'KeyR': this.recover(); break;
         case 'KeyH': this.settings.showHud = !this.settings.showHud; this.hudEl.classList.toggle('hidden'); $('topbar').classList.toggle('hidden'); this.saveSettings(); break;
         case 'KeyT': this.setTimeOfDay(Math.floor(this.hour + 1.5) % 24); this.toast(`Time ${String(Math.floor(this.hour)).padStart(2, '0')}:00`); break;
@@ -302,6 +304,12 @@ class Game {
     try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* needs a user gesture */ }
   }
 
+  shift(d) {
+    const v = this.vehicle;
+    if (!v.manual) return;
+    if (!(d > 0 ? v.shiftUp() : v.shiftDown())) { if (v.shiftTimer <= 0.05) this.toast('Gear not available'); }
+  }
+
   toast(msg) { const t = $('toast'); t.textContent = msg; t.style.opacity = 1; clearTimeout(this._tt); this._tt = setTimeout(() => t.style.opacity = 0, 1800); }
 
   cycleCamera() {
@@ -330,7 +338,7 @@ class Game {
     P.brk = gp.buttons[6] ? gp.buttons[6].value : 0;
     P.hb = gp.buttons[0] && gp.buttons[0].pressed ? 1 : 0;
     const edge = (i, fn) => { const on = gp.buttons[i] && gp.buttons[i].pressed; if (on && !P.prev[i]) fn(); P.prev[i] = on; };
-    edge(3, () => this.cycleCamera()); edge(9, () => this.ui.toggle()); edge(2, () => { this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); }); edge(1, () => this.recover());
+    edge(3, () => this.cycleCamera()); edge(9, () => this.ui.toggle()); edge(2, () => { this.auto = !this.auto; this.toast(this.auto ? 'Autopilot on' : 'Autopilot off'); }); edge(1, () => this.recover()); edge(5, () => this.shift(1)); edge(4, () => this.shift(-1));
   }
 
   // ---------------- simulation ----------------
@@ -353,6 +361,10 @@ class Game {
       }
     }
     v.snow = U.uSnow.value; v.wet = this.weather.wet;
+    const cfg = this.settings;
+    v.manual = cfg.gearbox === 'manual' && !this.auto;
+    if (!v.manual && v.gear === 0) v.gear = 1;
+    v.tune.power = cfg.power ?? 1; v.tune.grip = cfg.grip ?? 1; v.tcOn = cfg.tc !== false;
     v.drive(throttle, brake, steer, hb, dt);
     v.step(dt, sub);
     this.collide();
@@ -402,7 +414,7 @@ class Game {
       this.car.setSteer(st / 0.62 * 2.4);
       if (this.camMode === 'cockpit') {
         const mph = this.settings.units === 'mph';
-        const g = v.gear === -1 ? 'R' : Math.abs(v.fwdSpeed) < 0.3 && v.throttle < 0.05 ? 'N' : String(v.gear);
+        const g = v.gear === -1 ? 'R' : v.gear === 0 ? 'N' : (!v.manual && Math.abs(v.fwdSpeed) < 0.3 && v.throttle < 0.05) ? 'N' : String(v.gear);
         this.car.updateCluster(this.time, Math.abs(v.fwdSpeed) * (mph ? 2.23694 : 3.6), v.rpm, g, mph ? 'mph' : 'km/h');
       }
     }
@@ -508,6 +520,9 @@ class Game {
       cam.rotateZ(sx * 0.002); cam.rotateX(sy * 0.0016);
       fov = (m === 'cockpit' ? this.settings.fov + 12 : this.settings.fov + 6) + Math.min(sp * 0.15, 8);
     }
+    // the cabin roof is only ~0.15 m above the driver's eyes: pull the near plane in so it is not clipped away
+    const nearT = m === 'cockpit' ? 0.1 : m === 'hood' ? 0.15 : 0.25;
+    if (cam.near !== nearT) { cam.near = nearT; cam.updateProjectionMatrix(); }
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov += (fov - cam.fov) * (snap ? 1 : 1 - Math.exp(-dt * 3)); cam.updateProjectionMatrix(); }
   }
 
@@ -584,6 +599,7 @@ class Game {
     const v = this.vehicle, w = this.weather;
     this.audio.update({
       rpm: v.rpm, throttle: v.throttle, speed: v.speed, slip: v.slip, surf: v.wheels[2].surf, cam: this.camMode,
+      slipAng: Math.max(...v.wheels.map(x => Math.abs(x.slipAngle))), lockR: Math.max(Math.abs(v.wheels[2].slipRatio), Math.abs(v.wheels[3].slipRatio)), hb: v.handbrake,
       night: this.sky.night, rain: this.paused ? w.state.rain * 0.4 : w.state.rain, wind: w.wind, dt,
     });
   }
@@ -610,7 +626,7 @@ class Game {
       this._hudT = this.time;
       const mph = this.settings.units === 'mph';
       $('speed').firstChild.nodeValue = Math.round(Math.abs(v.fwdSpeed) * (mph ? 2.23694 : 3.6));
-      $('gearTxt').textContent = (this.auto ? 'AUTO · ' : '') + (v.gear === -1 ? 'R' : Math.abs(v.fwdSpeed) < 0.3 && v.throttle < 0.05 ? 'N' : v.gear);
+      $('gearTxt').textContent = (this.auto ? 'AUTO · ' : v.manual ? 'MAN · ' : '') + (v.gear === -1 ? 'R' : v.gear === 0 ? 'N' : (!v.manual && Math.abs(v.fwdSpeed) < 0.3 && v.throttle < 0.05) ? 'N' : v.gear);
       $('rpmfill').style.width = clamp((v.rpm - 800) / 6000, 0, 1) * 100 + '%';
       const hh = Math.floor(this.hour), mm = Math.floor((this.hour - hh) * 60);
       $('clock').innerHTML = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}<br><span style="opacity:.6">${(v.distance / 1000).toFixed(1)} km</span>`;

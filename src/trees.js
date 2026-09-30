@@ -215,11 +215,11 @@ export function buildConifer(seed, P, lod) {
   }
   addTube(b, pts, rad, radial, H, 2, 1, 1);
   const y0 = H * P.skirt;
-  const whorlStep = lod === 0 ? 0.62 : lod === 1 ? 1.5 : 3.2;
-  const nb = lod === 0 ? 8 : lod === 1 ? 6 : 5;
+  const whorlStep = lod === 0 ? 0.5 : lod === 1 ? 1.15 : 3.2;
+  const nb = lod === 0 ? 9 : lod === 1 ? 7 : 5;
   const Lmax = H * P.spread;
   const brDir = new V3(), ax = new V3(), ay = new V3(), nrm = new V3(), cen = new V3(), up = new V3(0, 1, 0);
-  const layers = lod === 0 ? 2 : 1;
+  const layers = lod === 0 ? 3 : lod === 1 ? 2 : 1;
   let whorl = 0;
   for (let y = y0; y < H * 0.985; y += whorlStep * (0.85 + rnd() * 0.3)) {
     const t = (y - y0) / (H - y0);
@@ -233,8 +233,8 @@ export function buildConifer(seed, P, lod) {
       for (let l = 0; l < layers; l++) {
         // branch card: v axis along branch, u axis across (horizontal, perpendicular to azimuth)
         const across = new V3(-Math.sin(az), 0, Math.cos(az));
-        const roll = l === 0 ? 0 : 0.9 * (rnd() < 0.5 ? 1 : -1);
-        const w = L * (lod === 0 ? 0.36 : 0.5);
+        const roll = l === 0 ? (rnd() - 0.5) * 0.3 : (0.55 + 0.5 * rnd()) * (l === 1 ? 1 : -1);
+        const w = L * (lod === 0 ? 0.3 : 0.4) + 0.12;
         const axV = across.clone();
         const ayV = brDir.clone();
         // roll around branch axis for second layer

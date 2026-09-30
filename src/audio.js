@@ -70,10 +70,40 @@ export class AudioEngine {
     t.bp = ctx.createBiquadFilter(); t.bp.type = 'bandpass'; t.bp.frequency.value = 400; t.bp.Q.value = 0.6;
     t.g = ctx.createGain(); t.g.gain.value = 0;
     t.src.connect(t.bp); t.bp.connect(t.g); t.g.connect(master);
-    const sq = this.squeal = {}; sq.src = loopSrc(this.noiseW);
-    sq.bp = ctx.createBiquadFilter(); sq.bp.type = 'bandpass'; sq.bp.frequency.value = 2400; sq.bp.Q.value = 6;
-    sq.g = ctx.createGain(); sq.g.gain.value = 0;
-    sq.src.connect(sq.bp); sq.bp.connect(sq.g); sq.g.connect(master);
+    // ---- tyre squeal / skid ----
+    // Real squeal is a stick-slip *tone*: a rich harmonic buzz around 0.6-1.4 kHz whose amplitude flutters at 40-70 Hz,
+    // sitting on a bed of rubber-scrub noise. Locked wheels (handbrake) give a lower, grainier scrub with a fading pitch.
+    const sq = this.squeal = {};
+    sq.out = ctx.createGain(); sq.out.gain.value = 1;
+    sq.tone = ctx.createGain(); sq.tone.gain.value = 0;                      // cornering squeal level
+    sq.am = ctx.createGain(); sq.am.gain.value = 0.7;                        // stick-slip flutter target
+    sq.o1 = ctx.createOscillator(); sq.o1.type = 'sawtooth'; sq.o1.frequency.value = 900;
+    sq.o2 = ctx.createOscillator(); sq.o2.type = 'sawtooth'; sq.o2.frequency.value = 900 * 1.503;
+    sq.o3 = ctx.createOscillator(); sq.o3.type = 'square'; sq.o3.frequency.value = 900 * 2.01;
+    const g2 = ctx.createGain(); g2.gain.value = 0.55; const g3 = ctx.createGain(); g3.gain.value = 0.22;
+    sq.flut = ctx.createOscillator(); sq.flut.type = 'triangle'; sq.flut.frequency.value = 52;
+    sq.fd = ctx.createGain(); sq.fd.gain.value = 0.3; sq.flut.connect(sq.fd); sq.fd.connect(sq.am.gain);
+    sq.wob = ctx.createOscillator(); sq.wob.type = 'sine'; sq.wob.frequency.value = 6.3;
+    sq.wd = ctx.createGain(); sq.wd.gain.value = 22;
+    sq.wob.connect(sq.wd); for (const o of [sq.o1, sq.o2, sq.o3]) sq.wd.connect(o.detune);
+    sq.body = ctx.createBiquadFilter(); sq.body.type = 'bandpass'; sq.body.frequency.value = 1700; sq.body.Q.value = 0.9;
+    sq.lp = ctx.createBiquadFilter(); sq.lp.type = 'lowpass'; sq.lp.frequency.value = 5200; sq.lp.Q.value = 0.5;
+    sq.o1.connect(sq.am); sq.o2.connect(g2); g2.connect(sq.am); sq.o3.connect(g3); g3.connect(sq.am);
+    sq.am.connect(sq.body); sq.body.connect(sq.lp); sq.lp.connect(sq.tone); sq.tone.connect(sq.out);
+    for (const o of [sq.o1, sq.o2, sq.o3, sq.flut, sq.wob]) o.start();
+    // rubber scrub bed
+    sq.nsrc = loopSrc(this.noiseP);
+    sq.nbp = ctx.createBiquadFilter(); sq.nbp.type = 'bandpass'; sq.nbp.frequency.value = 1500; sq.nbp.Q.value = 0.8;
+    sq.ng = ctx.createGain(); sq.ng.gain.value = 0;
+    sq.nsrc.connect(sq.nbp); sq.nbp.connect(sq.ng); sq.ng.connect(sq.out);
+    // locked-wheel / gravel slide: low grainy rumble
+    sq.lsrc = loopSrc(this.noiseB);
+    sq.lbp = ctx.createBiquadFilter(); sq.lbp.type = 'bandpass'; sq.lbp.frequency.value = 420; sq.lbp.Q.value = 0.7;
+    sq.lg = ctx.createGain(); sq.lg.gain.value = 0;
+    sq.lam = ctx.createOscillator(); sq.lam.type = 'sawtooth'; sq.lam.frequency.value = 34;
+    sq.lad = ctx.createGain(); sq.lad.gain.value = 0.25; sq.lam.connect(sq.lad); sq.lad.connect(sq.lg.gain); sq.lam.start();
+    sq.lsrc.connect(sq.lbp); sq.lbp.connect(sq.lg); sq.lg.connect(sq.out);
+    sq.out.connect(master);
 
     // ---- ambience: rustling trees / meadow wind ----
     const am = this.amb = {}; am.src = loopSrc(this.noiseP);
@@ -199,9 +229,23 @@ export class AudioEngine {
     const gravel = s.surf === 2 ? 1.6 : s.surf === 1 ? 1.3 : 1;
     this.tyre.g.gain.setTargetAtTime(Math.min(sp / 40, 1) * 0.16 * gravel * (1 + s.rain * 0.8), t, 0.1);
     this.tyre.bp.frequency.setTargetAtTime(220 + sp * 10 * (s.surf === 0 ? 1 : 0.7), t, 0.1);
-    const sq = Math.max(0, s.slip - 0.55) * 0.9 * (sp > 3 ? 1 : 0);
-    this.squeal.g.gain.setTargetAtTime(Math.min(sq, 0.35), t, 0.04);
-    this.squeal.bp.frequency.setTargetAtTime(1800 + s.slip * 900, t, 0.05);
+    {
+      const q = this.squeal, moving = sp > 2.5 ? 1 : 0, tarmac = s.surf === 0 ? 1 : 0;
+      const lat = Math.min(1, Math.max(0, (s.slipAng - 0.10) / 0.16)) * moving;        // cornering slip
+      const lock = Math.min(1, Math.max(0, (s.lockR - 0.30) / 0.45)) * moving;          // wheels locked / spinning
+      const hb = s.hb > 0.5 && sp > 3 ? 1 : 0;
+      const slide = Math.max(lock, hb * 0.9);
+      const f0 = Math.min(1500, Math.max(520, 620 + s.slipAng * 700 + sp * 6.5 - slide * 130));
+      const pitch = (v, tc2) => { for (const o of [q.o1]) o.frequency.setTargetAtTime(v, t, tc2); q.o2.frequency.setTargetAtTime(v * 1.503, t, tc2); q.o3.frequency.setTargetAtTime(v * 2.01, t, tc2); };
+      pitch(f0, 0.06);
+      q.flut.frequency.setTargetAtTime(40 + lat * 28 + slide * 12, t, 0.1);
+      q.body.frequency.setTargetAtTime(f0 * 2.1, t, 0.08);
+      q.tone.gain.setTargetAtTime(Math.min(0.2, (lat * lat * 0.2 + slide * 0.06) * tarmac), t, 0.045);
+      q.ng.gain.setTargetAtTime(Math.min(0.24, (lat * 0.11 + slide * 0.2) * (tarmac ? 1 : 0.5) * Math.min(sp / 14, 1)), t, 0.05);
+      q.nbp.frequency.setTargetAtTime(900 + sp * 26, t, 0.1);
+      q.lg.gain.setTargetAtTime(Math.min(0.34, (slide * 0.24 + lat * 0.05) * Math.min(sp / 10, 1) * (tarmac ? 1 : 1.6)), t, 0.06);
+      q.lbp.frequency.setTargetAtTime((tarmac ? 300 : 650) + sp * 9, t, 0.1);
+    }
     // ambience
     const day = 1 - s.night;
     this.amb.g.gain.setTargetAtTime(0.03 + 0.06 * (1 - Math.min(sp / 40, 1)) + s.wind * 0.05, t, 0.4);

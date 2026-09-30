@@ -4,6 +4,7 @@ export const DEFAULTS = {
   time: 16.8, timeFlow: 'slow', weather: 'clear', season: 'summer', paint: 'red', units: 'kmh', quality: 'high',
   renderScale: 1.0, dynamicRes: true, fov: 60, volume: 0.8, music: 0.45, sfx: 1, camera: 'chase',
   viewDist: 1.0, grass: 1.0, showHud: true, shake: 1.0, mouse: 1.0,
+  gearbox: 'auto', power: 1.0, grip: 1.0, tc: true,
 };
 
 const KEY = 'openroad.settings.v1';
@@ -72,6 +73,10 @@ export class UI {
       swb.appendChild(i);
     }
     grid.appendChild(sw);
+    seg('Gearbox', [['auto', 'Automatic'], ['manual', 'Manual (E / Q)']], s.gearbox, (k) => { s.gearbox = k; g.saveSettings(); g.toast(k === 'manual' ? 'Manual gearbox: E shift up, Q shift down' : 'Automatic gearbox'); });
+    slider('Engine power', 0.6, 1.8, 0.05, s.power, (v) => { s.power = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
+    slider('Tyre grip', 0.7, 1.6, 0.05, s.grip, (v) => { s.grip = v; g.saveSettings(); }, (v) => (v * 100).toFixed(0) + '%');
+    seg('Traction control', [['on', 'On'], ['off', 'Off']], s.tc !== false ? 'on' : 'off', (k) => { s.tc = k === 'on'; g.saveSettings(); });
     seg('Camera', [['chase', 'Chase'], ['far', 'Far'], ['low', 'Low'], ['hood', 'Hood'], ['cockpit', 'Cockpit']], g.camMode, (k) => { g.camMode = k; s.camera = k; g.saveSettings(); });
     slider('Field of view', 45, 90, 1, s.fov, (v) => { s.fov = v; g.saveSettings(); }, (v) => v.toFixed(0) + '°');
     slider('Camera shake', 0, 2, 0.1, s.shake, (v) => { s.shake = v; g.saveSettings(); }, (v) => v.toFixed(1));
