@@ -599,7 +599,6 @@ def build_details(body, cabin):
         for k in range(6):
             y0 = 1.32 + k * 0.07
             objs.append(decal('HoodVent', [(sx * 0.16, y0), (sx * 0.44, y0), (sx * 0.44, y0 + 0.02), (sx * 0.16, y0 + 0.02)], 'XY', 1.6, shell, 'BlackPlastic', offset=0.002))
-    curve_line('HoodCowl', [(-0.82, 0.80, 1.6), (0.0, 0.82, 1.6), (0.82, 0.80, 1.6)], shell, axis='z', width=0.004)
     curve_line('TrunkLine', [(-0.85, -1.62, 1.6), (0.0, -1.66, 1.6), (0.85, -1.62, 1.6)], shell, axis='z', width=0.004)
     # door handles
     for sx in (-1, 1):
