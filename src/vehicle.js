@@ -222,7 +222,7 @@ export class Vehicle {
         wh.comp = 0; wh.fz = 0;
         wh.hub.copy(org).addScaledVector(up, -(S.rayLen - S.radius));
         wh.omega += dt * (wh.drive ? drivenTorque / 2 : 0) / S.wheelInertia;
-        wh.omega *= (1 - dt * 0.25);
+        wh.omega = clamp(wh.omega * (1 - dt * 0.25), -420, 420);
         continue;
       }
       contacts++;
@@ -291,7 +291,7 @@ export class Vehicle {
       }
       evalF(wNew, o1);
       const fx = o1[0], fy = o1[1];
-      wh.omega = wNew;
+      wh.omega = clamp(wNew, -420, 420);
       wh.fx = fx; wh.fy = fy; wh.slipRatio = o1[2]; wh.slipAngle = o1[3];
       if (o1[4] > slipMax) slipMax = o1[4];
       const rr = (wh.surf === 0 ? S.rollRes : wh.surf === 1 ? 0.022 : 0.04) * Fz;

@@ -484,7 +484,7 @@ class Game {
         if (wet > 0.4) { r = 0.32; g = 0.27; b = 0.2; a = 0.18; } else if (wh.surf === 2) { r = 0.42; g = 0.4; b = 0.28; a = 0.16; } else { r = 0.66; g = 0.58; b = 0.46; a = 0.3; }
         size = 0.9;
       }
-      let n = rate * dt; const whole = Math.floor(n); n = whole + (Math.random() < n - whole ? 1 : 0);
+      let n = Math.min(rate * dt, 6); const whole = Math.floor(n); n = whole + (Math.random() < n - whole ? 1 : 0);
       for (let k = 0; k < n; k++) {
         cp.emit(cpx.x + (Math.random() - 0.5) * 0.3, cpx.y + 0.15, cpx.z + (Math.random() - 0.5) * 0.3,
           -v.vel.x * 0.12 + (Math.random() - 0.5) * 1.5, up + Math.random() * 0.8, -v.vel.z * 0.12 + (Math.random() - 0.5) * 1.5,
@@ -504,8 +504,8 @@ class Game {
     const fwdH = new THREE.Vector3(v.fwd.x, 0, v.fwd.z).normalize();
     const velH = new THREE.Vector3(v.vel.x, 0, v.vel.z);
     let want = fwdH;
-    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, this.camMode === 'rally' ? 0.92 : 0.55).normalize(); }
-    const kd = snap ? 1 : 1 - Math.exp(-dt * 3.2);
+    if (velH.length() > 4 && v.fwdSpeed > 0) { velH.normalize(); want = fwdH.clone().lerp(velH, this.camMode === 'rally' ? 0.45 : 0.55).normalize(); }
+    const kd = snap ? 1 : 1 - Math.exp(-dt * (this.camMode === 'rally' ? 2.2 : 3.2));
     this.camDir.lerp(want, kd).normalize();
     {   // mouse look eases back to centre a moment after the mouse stops
       const L = this.look; L.idle += dt;
@@ -522,19 +522,16 @@ class Game {
     const sx = (Math.sin(this.shakeT * 31.1) + Math.sin(this.shakeT * 17.3 + 1.3)) * 0.5 * shake, sy = (Math.sin(this.shakeT * 27.7 + 2.1) + Math.sin(this.shakeT * 13.1)) * 0.5 * shake;
     if (m === 'chase' || m === 'far' || m === 'rally') {
       const rally = m === 'rally';
-      const dist = m === 'far' ? 10.5 : rally ? 4.5 : 6.4, height = m === 'far' ? 3.6 : rally ? 1.2 : 1.95;
-      if (rally) fov = this.settings.fov + 7 + Math.min(sp * 0.2, 14);      // wide, punchy lens that stretches with speed
+      const dist = m === 'far' ? 10.5 : rally ? 12 : 6.4, height = m === 'far' ? 3.6 : rally ? 10.5 : 1.95;
+      if (rally) fov = this.settings.fov * 0.9 + Math.min(sp * 0.05, 4);   // narrow lens: the flattened, top-down 'rally game' look
       // mouse orbit: view yaw swings the camera around the car, view pitch (up) lowers it
       const L = this.look, ya = L.yaw, el = -clamp(L.pitch, -1.05, 0.3);
       const dirL = this._dirL.copy(this.camDir).applyAxisAngle(this._up, ya);
       pos = carPos.clone().addScaledVector(dirL, -dist * Math.cos(el));
-      if (rally) {   // the camera swings out to the outside of a slide, like a rally broadcast cam
-        const side = clamp(v.vel.dot(v.right) * 0.09, -1.1, 1.1);
-        pos.addScaledVector(this._tmpR.set(dirL.z, 0, -dirL.x), -side);
-      }
+
       pos.y = carPos.y - SPEC.comH + height + dist * Math.sin(el);
-      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.8 : 1.3);
-      if (rally) look.addScaledVector(this.camDir, -1.5);              // aim closer to the car: it sits low in the frame with the road ahead above it
+      look = carPos.clone().addScaledVector(this.camDir, 5.5 * Math.cos(ya)); look.y = carPos.y - SPEC.comH + (rally ? 0.0 : 1.3);
+      if (rally) look.addScaledVector(this.camDir, 6 + Math.min(sp * 0.2, 9));   // look well ahead: the car sits in the lower third with the road ahead of it
       const gy = this.world.height(pos.x, pos.z) + 0.6;
       if (pos.y < gy) pos.y = gy;
       // smooth the offset relative to the car (not the world position) so the camera never trails behind at high speed
@@ -547,8 +544,7 @@ class Game {
       cam.position.copy(this.camPos);
       cam.up.set(0, 1, 0);
       cam.lookAt(this.camLook);
-      cam.rotateZ(sx * 0.0016 * (rally ? 1.8 : 1)); cam.rotateX(sy * 0.0012 * (rally ? 1.8 : 1));
-      if (rally) cam.rotateZ(clamp(-v.steerAngle * 0.35, -0.12, 0.12) * Math.min(1, sp / 25));   // lean into the corner
+      cam.rotateZ(sx * 0.0016 * (rally ? 0.4 : 1)); cam.rotateX(sy * 0.0012 * (rally ? 0.4 : 1));
     } else {
       const off = m === 'hood' ? new THREE.Vector3(0, 1.08, -1.05) : new THREE.Vector3(-0.36, 1.14, 0.09);
       const q = v.quat;
@@ -704,8 +700,9 @@ class Game {
     const dt = Math.min(raw, 0.1);
     this.fps = this.fps ? this.fps * 0.95 + (1 / Math.max(raw, 1e-4)) * 0.05 : 60;
     this.adaptResolution(raw);
-    this.frame(dt);
-    this.composer.render();
+    // one failing subsystem must never freeze the picture: always render, report the error once
+    try { if (raw < 2) this.frame(dt); } catch (e) { if (!this._frameErr) { this._frameErr = true; console.error('frame error', e); this.toast('Recovered from an error - press R if the car looks stuck'); } }
+    try { this.composer.render(); } catch (e) { if (!this._renderErr) { this._renderErr = true; console.error('render error', e); } }
   }
 
   // ---- deterministic helpers for automated tests ----

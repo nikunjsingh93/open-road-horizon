@@ -55,7 +55,8 @@ export class World {
 
   // ---- style zones ----
   _zoneType(k) {
-    if (k <= 0) return 'meadows';
+    if (!(k > 0)) return 'meadows';
+    if (k > 600) k = 600;
     const q = this._zseq;
     while (q.length <= k) {
       const cyc = (q.length / ZONE_TYPES.length) | 0;
@@ -202,6 +203,7 @@ export class World {
   }
 
   ensure(sMax) {
+    if (!(sMax < 4e6)) sMax = Number.isFinite(sMax) ? 4e6 : 0;      // a corrupt position must never ask for an endless road
     const need = Math.ceil(sMax / DS) + 80;
     while (this.gen < need) {
       const i = this.gen;

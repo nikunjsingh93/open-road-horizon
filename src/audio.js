@@ -150,6 +150,8 @@ export class AudioEngine {
   thud(k) {
     if (!this.started) return;
     const ctx = this.ctx, t = ctx.currentTime;
+    if (t - (this._lastThud || -9) < 0.22) return;         // a car wedged against a tree must not spawn a sound per frame
+    this._lastThud = t;
     const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
     const g = ctx.createGain(); g.gain.setValueAtTime(0.9 * k, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
     const n = ctx.createBufferSource(); n.buffer = this.noiseW; const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 900;
